@@ -1,0 +1,11 @@
+{
+  "name": "Job Pilot",
+  "short_name": "Job Pilot",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14171c",
+  "theme_color": "#14171c",
+  "icons": [{"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}],
+  "share_target": {"action": "./index.html", "method": "GET", "params": {"title": "title", "text": "text", "url": "url"}}
+}

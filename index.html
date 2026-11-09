@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<title>Job Pilot</title>
+<style>
+:root{--canvas:#14171c;--surface:#1c2128;--surface2:#262d36;--line:#2f3844;--text:#e7edf5;--muted:#8d9bab;--accent:#3b8cff;--accent-text:#fff;
+--t1:#4ad08a;--t1bg:#143627;--t2:#6aa8ff;--t2bg:#162c4d;--t3:#e3b04b;--t3bg:#3a2e12;--skip:#8d9bab;--skipbg:#262d36;--bad:#ff7a6b;--badbg:#40201c;--warn:#f0a35e;--warnbg:#3b2a17;--ai:#b79cff;--aibg:#2a2147}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--canvas);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+#app{height:100%;display:flex;flex-direction:column;max-width:720px;margin:0 auto}
+header.top{display:flex;align-items:center;gap:10px;padding:max(12px,env(safe-area-inset-top)) 16px 8px;min-height:56px}
+header.top h1{font-size:22px;margin:0;flex:1}
+main{flex:1;overflow-y:auto;padding:4px 16px 24px;-webkit-overflow-scrolling:touch}
+nav.tabs{display:flex;border-top:1px solid var(--line);background:var(--canvas);padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs button{flex:1;background:none;border:0;color:var(--muted);padding:10px 0 8px;font:500 12px system-ui;min-height:56px;display:flex;flex-direction:column;align-items:center;gap:3px}
+nav.tabs button svg{width:22px;height:22px}
+nav.tabs button[aria-selected=true]{color:var(--accent)}
+button,input,textarea,select{font:inherit;color:inherit}
+.btn{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-height:44px;cursor:pointer;font-weight:600}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.btn.danger{color:var(--bad);border-color:#5a2b26}
+.btn.ghost{background:none}
+.btn.ai{background:var(--aibg);border-color:#43357a;color:var(--ai)}
+.btn:disabled{opacity:.45}
+input[type=text],input[type=search],input[type=password],textarea,select{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 12px;min-height:44px}
+textarea{min-height:96px;resize:vertical}
+label{display:flex;flex-direction:column;gap:5px;font-weight:600;font-size:13px;color:var(--muted);margin-bottom:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:13px;white-space:nowrap}
+.chip.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+.chip.btn2{min-height:36px}
+.filters{display:flex;gap:8px;overflow-x:auto;padding:8px 0 10px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.pill{font-size:12px;padding:3px 9px;border-radius:8px;background:var(--surface2);color:var(--text);white-space:nowrap}
+.pill.good{background:var(--t1bg);color:var(--t1)}.pill.warn{background:var(--warnbg);color:var(--warn)}.pill.bad{background:var(--badbg);color:var(--bad)}.pill.ai{background:var(--aibg);color:var(--ai)}.pill.blue{background:var(--t2bg);color:var(--t2)}
+.tier{font-weight:700;font-size:12px;padding:4px 9px;border-radius:8px}
+.tier.t1{background:var(--t1bg);color:var(--t1)}.tier.t2{background:var(--t2bg);color:var(--t2)}.tier.t3{background:var(--t3bg);color:var(--t3)}.tier.ts{background:var(--skipbg);color:var(--skip)}
+.swipe{position:relative;margin-bottom:10px;border-radius:16px;overflow:hidden}
+.swipe .under{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-weight:700}
+.under.apply{background:var(--accent)}.under.skip{background:#5a2b26}
+.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;touch-action:pan-y;transition:transform .18s ease}
+.card.dragging{transition:none}
+.card .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.card .co{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.card .ti{font-size:17px;font-weight:700;margin:2px 0 8px;overflow-wrap:anywhere}
+.card .meta{display:flex;flex-wrap:wrap;gap:6px}
+.hint{color:var(--muted);font-size:12px;text-align:center;margin:2px 0 8px}
+.sheet{position:fixed;inset:0;background:var(--canvas);z-index:20;overflow-y:auto;padding:max(12px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
+.sheet .bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sheet h2{font-size:20px;margin:6px 0 2px;overflow-wrap:anywhere}
+.sec{margin-top:16px}
+.sec h3{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 6px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.box+.box{margin-top:8px}
+ul.l{margin:0;padding-left:18px}ul.l li{margin:3px 0}
+.stat{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.stat b{display:block;font-size:22px}.stat span{font-size:11px;color:var(--muted);text-transform:uppercase}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;gap:10px;align-items:center;z-index:40;max-width:688px;margin:0 auto}
+.toast span{flex:1}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:30;display:flex;align-items:flex-end}
+.modal .inner{background:var(--surface);width:100%;max-width:720px;margin:0 auto;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.muted{color:var(--muted)}.small{font-size:12px}
+.row2{display:flex;gap:8px;flex-wrap:wrap}.row2>*{flex:1 1 140px}
+.empty{padding:28px 12px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:16px}
+.kv{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}.kv:last-child{border:0}
+.kv code{overflow-wrap:anywhere;font-size:13px;color:var(--text)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top"><h1 id="title">Leads</h1><button class="btn ghost" id="refresh" aria-label="Refresh">Refresh</button></header>
+  <main id="main"></main>
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+</div>
+<script>
+const REPO_DEFAULT = "abdullahsulehri/job-pilot-engine";
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v) } catch (e) { return d } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) {} } };
+const S = { jobs: [], generated: "", tab: "leads", q: "", f: { tier: "all", pay: "all", effort: "all", where: "all", sector: "all" },
+  marks: ls.get("jp.marks", {}), events: ls.get("jp.events", []), profile: ls.get("jp.profile", {}), cfg: ls.get("jp.cfg", { repo: REPO_DEFAULT, token: "" }), open: null, loadErr: "" };
+const ICON = { home: '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>', leads: '<path d="M16 11a4 4 0 1 0-8 0M4 21a8 8 0 0 1 16 0"/>', applied: '<path d="M4 4h16v16H4zM8 12l3 3 5-6"/>', profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>' };
+const TABS = [["home", "Home"], ["leads", "Leads"], ["applied", "Applied"], ["profile", "Profile"]];
+const tc = t => t === "Tier 1" ? "t1" : t === "Tier 2" ? "t2" : t === "Tier 3" ? "t3" : "ts";
+const ORDER = { "Tier 1": 0, "Tier 2": 1, "Tier 3": 2, "Skip": 3 };
+const BRANK = { "P1 Lahore": 0, "P1 remote (Gulf, NZ, AU)": 1, "Remote worldwide / other": 2, "P2 USA remote": 3, "P3 Gulf onsite": 4 };
+const REASONS = ["Pay too low", "Not my level", "Location or visa", "Industry", "Company", "Bad posting", "Already applied", "Other"];
+
+/* ---------- GitHub ---------- */
+async function gh(path, opt = {}) {
+  const r = await fetch("https://api.github.com/repos/" + S.cfg.repo + path, { ...opt, headers: { Accept: opt.raw ? "application/vnd.github.raw+json" : "application/vnd.github+json", Authorization: "Bearer " + S.cfg.token, "X-GitHub-Api-Version": "2022-11-28", ...(opt.body ? { "Content-Type": "application/json" } : {}) } });
+  if (!r.ok) throw new Error("GitHub said " + r.status + (r.status === 401 || r.status === 403 ? " (check the token and its permissions)" : r.status === 404 ? " (file or repo not found)" : ""));
+  return opt.raw ? r.json() : r.status === 204 ? null : r.json();
+}
+async function load(showErr) {
+  if (!S.cfg.token) { S.loadErr = "Add your GitHub token in Profile to load your jobs."; return render(); }
+  try { const d = await gh("/contents/reports/app-jobs.json", { raw: true }); S.jobs = d.jobs; S.generated = d.generated; ls.set("jp.cache", d); S.loadErr = ""; }
+  catch (e) { const c = ls.get("jp.cache", null); if (c) { S.jobs = c.jobs; S.generated = c.generated; S.loadErr = "Offline or blocked, showing the saved copy. " + e.message } else S.loadErr = e.message; }
+  render();
+}
+async function issue(title, body, labels) { return gh("/issues", { method: "POST", body: JSON.stringify({ title, body, labels }) }); }
+let eventsIssue = ls.get("jp.eventsIssue", null);
+async function logEvent(ev) {
+  const e = { ts: new Date().toISOString(), ...ev }; S.events.push(e); ls.set("jp.events", S.events);
+  if (!S.cfg.token) return;
+  try {
+    if (!eventsIssue) { const i = await issue("App events (do not close)", "Decisions made in the phone app. One comment per decision.", ["app-event"]); eventsIssue = i.number; ls.set("jp.eventsIssue", eventsIssue); }
+    await gh("/issues/" + eventsIssue + "/comments", { method: "POST", body: JSON.stringify({ body: "```json\n" + JSON.stringify(e) + "\n```" }) });
+    e.synced = true; ls.set("jp.events", S.events);
+  } catch (x) { /* stays unsynced; retried on the next event */ }
+}
+async function syncEvents() { for (const e of S.events.filter(x => !x.synced)) { try { await gh("/issues/" + eventsIssue + "/comments", { method: "POST", body: JSON.stringify({ body: "```json\n" + JSON.stringify(e) + "\n```" }) }); e.synced = true } catch (x) { break } } ls.set("jp.events", S.events); }
+
+/* ---------- helpers ---------- */
+const whereOf = j => /Lahore/.test(j.bucket) ? "Lahore" : /remote|Remote/.test(j.bucket) ? "Remote" : /Gulf/.test(j.bucket) ? "Gulf" : "Other";
+const payKnown = j => !!j.pay;
+function visible() {
+  const q = S.q.toLowerCase(), f = S.f;
+  return S.jobs.filter(j => j.tier !== "Skip" && !S.marks[j.id] &&
+    (f.tier === "all" || j.tier === f.tier) && (f.pay === "all" || (f.pay === "stated" ? payKnown(j) : !payKnown(j))) &&
+    (f.effort === "all" || j.effort === f.effort) && (f.where === "all" || whereOf(j) === f.where) &&
+    (f.sector === "all" || (f.sector === "Govt" ? !!j.sector : !j.sector)) &&
+    (!q || (j.title + " " + j.company + " " + j.location).toLowerCase().includes(q)))
+    .sort((a, b) => ORDER[a.tier] - ORDER[b.tier] || (BRANK[a.bucket] ?? 5) - (BRANK[b.bucket] ?? 5) || b.fit - a.fit);
+}
+function chipsFor(j) {
+  const o = [];
+  o.push(`<span class="pill ${j.pay ? "good" : ""}">${esc(j.pay || "Pay not stated")}</span>`);
+  o.push(`<span class="pill blue">${esc(j.route)}</span>`);
+  (j.extras || []).filter(x => x !== "References").forEach(x => o.push(`<span class="pill warn">${esc(x)} needed</span>`));
+  o.push(`<span class="pill ai">${j.cv.action === "keep" || j.cv.action === "reuse_previous" ? "CV: no change" : j.cv.edits.length ? "CV: tweak " + j.cv.edits.length : "CV: " + j.cv.action}</span>`);
+  if (j.sector) o.push(`<span class="pill">${j.sector}</span>`);
+  j.flags.slice(0, 2).forEach(f => o.push(`<span class="pill warn">${esc(f.length > 34 ? f.slice(0, 32) + "…" : f)}</span>`));
+  if (j.deadline && j.deadline !== "Not stated") o.push(`<span class="pill bad">Due ${esc(j.deadline)}</span>`);
+  return o.join("");
+}
+function toast(msg, undo) {
+  document.querySelector(".toast")?.remove();
+  const t = document.createElement("div"); t.className = "toast"; t.innerHTML = `<span>${esc(msg)}</span>` + (undo ? '<button class="btn ghost">Undo</button>' : "");
+  document.body.appendChild(t); const timer = setTimeout(() => t.remove(), 6000);
+  if (undo) t.querySelector("button").onclick = () => { clearTimeout(timer); t.remove(); undo() };
+}
+async function copy(text, label) { try { await navigator.clipboard.writeText(text); toast((label || "Text") + " copied") } catch (e) { toast("Copy blocked: select the text instead") } }
+
+/* ---------- actions ---------- */
+function mark(j, v, reason) { S.marks[j.id] = { v, at: new Date().toISOString().slice(0, 10), reason: reason || "" }; ls.set("jp.marks", S.marks); logEvent({ job: j.id, title: j.title, company: j.company, tier: j.tier, action: v, reason: reason || "" }); }
+function unmark(j) { delete S.marks[j.id]; ls.set("jp.marks", S.marks); logEvent({ job: j.id, action: "undo" }); render(); }
+function skipFlow(j) {
+  const m = document.createElement("div"); m.className = "modal";
+  m.innerHTML = `<div class="inner"><h2 style="margin:0 0 4px;font-size:18px">Why skip this job?</h2><p class="muted small" style="margin:0 0 10px">Optional. After about a month the engine suggests rule changes from your reasons. Nothing changes by itself.</p><div class="chips" id="rs"></div><label style="margin-top:12px">Anything to add<input type="text" id="rn" placeholder="e.g. real estate, no growth"></label><div class="row2"><button class="btn" id="rc">Cancel</button><button class="btn danger" id="rok">Skip job</button></div></div>`;
+  document.body.appendChild(m); let pick = "";
+  $("#rs", m).innerHTML = REASONS.map(r => `<button class="chip btn2" data-r="${r}">${r}</button>`).join("");
+  m.onclick = e => { const b = e.target.closest("[data-r]"); if (b) { pick = b.dataset.r; m.querySelectorAll("[data-r]").forEach(x => x.classList.toggle("sel", x === b)) } if (e.target === m) m.remove() };
+  $("#rc", m).onclick = () => { m.remove(); render() };
+  $("#rok", m).onclick = () => { const note = $("#rn", m).value.trim(); m.remove(); mark(j, "skipped", [pick, note].filter(Boolean).join(": ")); S.open = null; render(); toast("Skipped", () => unmark(j)) };
+}
+function applyFlow(j) { mark(j, "applied"); S.open = null; render(); toast("Marked applied", () => unmark(j)) }
+
+/* ---------- screens ---------- */
+function card(j) {
+  return `<div class="swipe" data-id="${j.id}"><div class="under"><span class="apply" style="color:#fff">✓ Applied</span><span style="color:#fff">Skip ✕</span></div>
+  <div class="card" data-open="${j.id}"><div class="row"><span class="co">${esc(j.company)} · ${esc(j.location)}</span><span class="tier ${tc(j.tier)}">${j.tier}</span></div>
+  <div class="ti">${esc(j.title)}</div><div class="meta">${chipsFor(j)}</div></div></div>`;
+}
+function filterBar() {
+  const opt = (k, vals) => vals.map(([v, l]) => `<button class="chip btn2 ${S.f[k] === v ? "sel" : ""}" data-f="${k}" data-v="${v}">${l}</button>`).join("");
+  return `<input type="search" id="q" placeholder="Search roles or companies" value="${esc(S.q)}" aria-label="Search">
+  <div class="filters">${opt("tier", [["all", "All tiers"], ["Tier 1", "Tier 1"], ["Tier 2", "Tier 2"], ["Tier 3", "Tier 3"]])}</div>
+  <div class="filters">${opt("where", [["all", "Anywhere"], ["Lahore", "Lahore"], ["Remote", "Remote"], ["Gulf", "Gulf"]])}${opt("pay", [["all", "Any pay"], ["stated", "Pay stated"]])}${opt("effort", [["all", "Any effort"], ["low", "Low effort"], ["medium", "Medium"], ["high", "High"]])}${opt("sector", [["all", "All sectors"], ["Govt", "Govt"]])}</div>`;
+}
+function Leads() {
+  const v = visible();
+  return filterBar() + `<div class="hint">← swipe left to skip · swipe right to mark applied →</div>` +
+    (v.length ? v.map(card).join("") : `<div class="empty">${S.jobs.length ? "No jobs match these filters." : (S.loadErr || "No jobs yet.")}</div>`);
+}
+function Home() {
+  const live = S.jobs.filter(j => j.tier !== "Skip" && !S.marks[j.id]);
+  const c = t => live.filter(j => j.tier === t).length;
+  const due = live.filter(j => j.deadline && j.deadline !== "Not stated").sort((a, b) => a.deadline.localeCompare(b.deadline)).slice(0, 3);
+  return `${S.loadErr ? `<div class="box" style="border-color:#5a2b26"><b>${esc(S.loadErr)}</b></div>` : ""}
+  <div class="stat" style="margin-top:8px"><div><b>${c("Tier 1")}</b><span>Tier 1</span></div><div><b>${c("Tier 2")}</b><span>Tier 2</span></div><div><b>${c("Tier 3")}</b><span>Tier 3</span></div><div><b>${Object.values(S.marks).filter(m => m.v === "applied").length}</b><span>Applied</span></div></div>
+  <div class="sec"><h3>Add a job</h3><div class="row2"><button class="btn primary" id="addjob">Add a link or text</button><button class="btn" id="addshot">Add screenshots</button></div></div>
+  <div class="sec"><h3>Top of your list</h3>${live.slice().sort((a, b) => ORDER[a.tier] - ORDER[b.tier] || (BRANK[a.bucket] ?? 5) - (BRANK[b.bucket] ?? 5) || b.fit - a.fit).slice(0, 3).map(card).join("") || '<div class="empty">Nothing yet.</div>'}</div>
+  ${due.length ? `<div class="sec"><h3>Closing soon</h3>${due.map(card).join("")}</div>` : ""}
+  <p class="muted small">Data from ${esc(S.generated || "never")}. Tiers are the engine's call; skip with a reason and it learns what you dislike.</p>`;
+}
+function Applied() {
+  const by = v => S.jobs.filter(j => S.marks[j.id]?.v === v);
+  const row = j => `<div class="box" data-open="${j.id}"><div class="row" style="display:flex;justify-content:space-between;gap:8px"><b>${esc(j.title)}</b><span class="muted small">${S.marks[j.id].at}</span></div><div class="muted">${esc(j.company)}</div>${S.marks[j.id].reason ? `<div class="small" style="margin-top:4px">Reason: ${esc(S.marks[j.id].reason)}</div>` : ""}<button class="btn ghost small" data-undo="${j.id}" style="margin-top:6px">Move back to Leads</button></div>`;
+  return `<div class="sec"><h3>Applied (${by("applied").length})</h3>${by("applied").map(row).join("") || '<div class="empty">Swipe right on a lead, or press Applied, after you apply.</div>'}</div>
+  <div class="sec"><h3>Skipped (${by("skipped").length})</h3>${by("skipped").map(row).join("") || '<div class="empty">Nothing skipped yet.</div>'}</div>`;
+}
+function Profile() {
+  const p = S.profile, f = (id, l, t = "text", ph = "") => `<label>${l}<input type="${t}" id="${id}" value="${esc(p[id] || "")}" placeholder="${ph}"></label>`;
+  return `<div class="sec"><h3>Connection</h3>
+  <label>GitHub repo<input type="text" id="repo" value="${esc(S.cfg.repo)}"></label>
+  <label>GitHub token <span class="small">stored on this phone only; never share it in chat</span><input type="password" id="token" value="${esc(S.cfg.token)}" placeholder="github_pat_..."></label>
+  <div class="row2"><button class="btn primary" id="savecfg">Save and load jobs</button></div></div>
+  <div class="sec"><h3>Your details (kept on this phone)</h3>${f("name", "Full name")}${f("phone", "Phone")}${f("email", "Email")}${f("linkedin", "LinkedIn")}${f("cvsite", "Interactive CV link", "text", "https://abdullahsulehri.github.io/interactive-cv/")}${f("gmail", "Gmail account used to apply")}${f("notice", "Notice period", "text", "30 days, negotiable")}
+  <button class="btn" id="savep">Save details</button></div>
+  <div class="sec"><h3>Preferences</h3><p class="muted small">Separate items with semicolons. Sent as an issue; the engine applies them on its next run.</p>
+  ${["Industries to watch", "Companies to watch", "Preferred position names", "Companies to avoid", "Jobs or roles to avoid"].map((l, i) => `<label>${l}<input type="text" data-pref="${i}" value="${esc((p.prefs || [])[i] || "")}"></label>`).join("")}
+  <button class="btn" id="sendprefs">Send preferences</button></div>
+  <div class="sec"><h3>Decisions log</h3><p class="muted small">${S.events.length} decisions recorded, ${S.events.filter(e => !e.synced).length} not yet sent.</p><button class="btn" id="syncev">Send now</button></div>`;
+}
+function Detail(j) {
+  const edits = j.cv.edits;
+  const cvTxt = j.cv.action === "keep" || j.cv.action === "reuse_previous" ? "No change needed: the base CV covers what the posting asks." : j.cv.action === "minor" ? "Small edits likely." : "Tailoring likely, please review.";
+  const email = j.route === "Email";
+  const steps = email ? ["Review the CV decision above.", "Prepare the email draft (coming in the next build: it creates a finished Gmail draft with the CV attached).", "Open Gmail, check, press Send."] :
+    j.route === "Govt portal" ? ["Check the age limit and required documents in the advert.", "Open the official portal and register or log in.", "Copy your details below, upload the CV, submit."] :
+      j.route === "Easy Apply" ? ["Open the posting.", "Use Easy Apply and upload the CV if asked.", "Come back and tap Applied."] : ["Open the application page.", "Copy your details and answers below into the form.", "Upload the CV, submit, then tap Applied."];
+  return `<div class="sheet" id="sheet"><div class="bar"><button class="btn ghost" id="back">← Back</button><span style="flex:1"></span><span class="tier ${tc(j.tier)}">${j.tier}</span></div>
+  <h2>${esc(j.title)}</h2><div class="muted">${esc(j.company)} · ${esc(j.location)}</div><div class="meta" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${chipsFor(j)}</div>
+  <div class="sec"><h3>The job in short</h3><div class="box">${esc(j.brief)}</div></div>
+  <div class="sec"><h3>Why it fits</h3><div class="box"><ul class="l">${j.why.filter(w => w.r).map(w => `<li><b>${esc(w.k)}:</b> ${esc(w.r)}</li>`).join("")}</ul></div></div>
+  ${j.gaps.length ? `<div class="sec"><h3>What is missing</h3><div class="box"><ul class="l">${j.gaps.map(g => `<li>${esc(g)}</li>`).join("")}</ul></div></div>` : ""}
+  ${j.flags.length ? `<div class="sec"><h3>Check before applying</h3><div class="box"><ul class="l">${j.flags.map(g => `<li>${esc(g)}</li>`).join("")}</ul></div></div>` : ""}
+  <div class="sec"><h3>Your CV</h3><div class="box">${cvTxt}${edits.length ? `<ul class="l" style="margin-top:6px">${edits.map(e => `<li>For "${esc(e.requirement)}": ${e.fact ? "add \"" + esc(e.fact.slice(0, 110)) + "…\"" : "adjust the summary"}${e.needs_approval ? " <span class='pill ai'>needs your approval</span>" : ""}</li>`).join("")}</ul>` : ""}${j.cv.gaps.length ? `<div class="small muted" style="margin-top:6px">Not claimed (no verified fact): ${j.cv.gaps.map(esc).join("; ")}</div>` : ""}</div></div>
+  <div class="sec"><h3>How to apply: ${esc(j.route)}</h3><div class="box"><ol class="l">${steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+  ${j.apply_to && email ? `<div class="kv"><span>To</span><code>${esc(j.apply_to)}</code><button class="btn ghost" data-copy="${esc(j.apply_to)}">Copy</button></div>` : ""}
+  ${(j.extras || []).length ? `<div class="small muted" style="margin-top:6px">The posting also asks for: ${j.extras.map(esc).join(", ")}.</div>` : ""}</div>
+  ${!email ? kit() : ""}</div>
+  <div class="sec"><h3>Ask about this job</h3><textarea id="ask" placeholder="e.g. Does this role need a video? Is the visa provided?"></textarea><button class="btn ai" id="asksend" style="margin-top:8px">Ask</button><p class="muted small">Answers come from the posting and your facts only. It replies in a GitHub issue; this build does not show the reply here yet.</p></div>
+  <div class="sec row2"><a class="btn primary" style="text-align:center;text-decoration:none" href="${esc(j.url)}" target="_blank" rel="noopener">Open posting</a><button class="btn" id="doapply">Applied</button><button class="btn danger" id="doskip">Skip</button></div></div>`;
+}
+function kit() {
+  const p = S.profile, rows = [["Name", p.name], ["Phone", p.phone], ["Email", p.email], ["LinkedIn", p.linkedin], ["Interactive CV", p.cvsite], ["Notice period", p.notice]].filter(r => r[1]);
+  return `<div class="box"><h3 style="margin-top:0">Your details</h3>${rows.map(r => `<div class="kv"><span>${r[0]}</span><code>${esc(r[1])}</code><button class="btn ghost" data-copy="${esc(r[1])}">Copy</button></div>`).join("") || '<span class="muted">Add your details in Profile first.</span>'}<div class="small muted" style="margin-top:6px">Salary expectation: you type it yourself.</div></div>`;
+}
+function AddJob(shot) {
+  const m = document.createElement("div"); m.className = "sheet"; m.id = "addsheet";
+  m.innerHTML = `<div class="bar"><button class="btn ghost" id="aback">← Back</button></div><h2>Add a job</h2>
+  <p class="muted">${shot ? "Screenshots go through GitHub's own form so they can be attached." : "Paste a link or the posting text."}</p>
+  <label>Link<input type="text" id="alink" placeholder="https://" value="${esc(S.shareUrl || "")}"></label>
+  <label>Posting text (optional)<textarea id="atext">${esc(S.shareText || "")}</textarea></label>
+  <label>Note (optional)<input type="text" id="anote"></label>
+  <div class="row2"><button class="btn primary" id="asend">${shot ? "Open GitHub form" : "Send to the engine"}</button></div>`;
+  document.body.appendChild(m);
+  $("#aback", m).onclick = () => m.remove();
+  $("#asend", m).onclick = async () => {
+    const link = $("#alink", m).value.trim(), text = $("#atext", m).value.trim(), note = $("#anote", m).value.trim();
+    if (!link && !text) return toast("Add a link or paste the text first");
+    const body = `Link: ${link || "-"}\nNote: ${note || "-"}\n\nPosting text:\n${text || "-"}`;
+    if (shot) { window.open(`https://github.com/${S.cfg.repo}/issues/new?labels=add-job&title=${encodeURIComponent("Add a job")}&body=${encodeURIComponent(body + "\n\nAttach screenshots below this line:\n")}`, "_blank"); return }
+    try { const i = await issue("Add a job: " + (link || text.slice(0, 50)), body, ["add-job"]); m.remove(); toast("Sent as issue #" + i.number + ". The engine reads it in the next build step.") } catch (e) { toast(e.message) }
+  };
+}
+
+/* ---------- render and events ---------- */
+function render() {
+  $("#title").textContent = TABS.find(t => t[0] === S.tab)[1];
+  $("#tabs").innerHTML = TABS.map(([k, l]) => `<button role="tab" aria-selected="${S.tab === k}" data-tab="${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>${l}</button>`).join("");
+  const keep = $("#main").scrollTop;
+  $("#main").innerHTML = { home: Home, leads: Leads, applied: Applied, profile: Profile }[S.tab]();
+  $("#main").scrollTop = keep;
+  document.getElementById("sheet")?.remove();
+  if (S.open) { const j = S.jobs.find(x => x.id === S.open); if (j) { document.body.insertAdjacentHTML("beforeend", Detail(j)); bindDetail(j) } }
+  bindSwipe();
+}
+function bindDetail(j) {
+  $("#back").onclick = () => { S.open = null; render() };
+  $("#doapply").onclick = () => applyFlow(j);
+  $("#doskip").onclick = () => skipFlow(j);
+  $("#asksend").onclick = async () => { const q = $("#ask").value.trim(); if (!q) return; try { const i = await issue("Question: " + j.title.slice(0, 60), `Job: ${j.url}\nJob id: ${j.id}\n\nQuestion: ${q}`, ["ask"]); toast("Question sent as issue #" + i.number) } catch (e) { toast(e.message) } };
+  $("#sheet").onclick = e => { const c = e.target.closest("[data-copy]"); if (c) copy(c.dataset.copy) };
+}
+function bindSwipe() {
+  document.querySelectorAll(".swipe").forEach(sw => {
+    const c = sw.querySelector(".card"), id = sw.dataset.id; let x0 = 0, y0 = 0, dx = 0, drag = false, moved = false;
+    c.addEventListener("pointerdown", e => { x0 = e.clientX; y0 = e.clientY; dx = 0; drag = true; moved = false; c.classList.add("dragging") });
+    c.addEventListener("pointermove", e => { if (!drag) return; dx = e.clientX - x0; if (Math.abs(dx) > 8 && Math.abs(e.clientY - y0) < 30) { moved = true; try { c.setPointerCapture(e.pointerId) } catch (x) {} c.style.transform = `translateX(${dx}px)` } });
+    const end = () => { if (!drag) return; drag = false; c.classList.remove("dragging"); const j = S.jobs.find(x => x.id === id);
+      if (moved && dx > 110) { c.style.transform = "translateX(110%)"; setTimeout(() => { mark(j, "applied"); render(); toast("Marked applied", () => unmark(j)) }, 120) }
+      else if (moved && dx < -110) { c.style.transform = ""; skipFlow(j) } else c.style.transform = "" };
+    c.addEventListener("pointerup", end); c.addEventListener("pointercancel", end);
+    c.addEventListener("click", e => { if (moved) { e.preventDefault(); moved = false; return } S.open = id; render() });
+  });
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-tab]"); if (t) { S.tab = t.dataset.tab; S.open = null; render(); return }
+  const f = e.target.closest("[data-f]"); if (f) { S.f[f.dataset.f] = f.dataset.v; render(); return }
+  const u = e.target.closest("[data-undo]"); if (u) { unmark(S.jobs.find(j => j.id === u.dataset.undo)); return }
+  const o = e.target.closest("[data-open]"); if (o && !e.target.closest(".swipe") && !e.target.closest("[data-undo]")) { S.open = o.dataset.open; render(); return }
+  if (e.target.id === "addjob") AddJob(false);
+  if (e.target.id === "addshot") AddJob(true);
+  if (e.target.id === "refresh") load(true);
+  if (e.target.id === "savecfg") { S.cfg = { repo: $("#repo").value.trim() || REPO_DEFAULT, token: $("#token").value.trim() }; ls.set("jp.cfg", S.cfg); load(true); toast("Saved") }
+  if (e.target.id === "savep") { ["name", "phone", "email", "linkedin", "cvsite", "gmail", "notice"].forEach(k => S.profile[k] = $("#" + k).value.trim()); ls.set("jp.profile", S.profile); toast("Details saved") }
+  if (e.target.id === "sendprefs") { const v = [...document.querySelectorAll("[data-pref]")].map(i => i.value.trim()); S.profile.prefs = v; ls.set("jp.profile", S.profile); const names = ["Industries to watch", "Companies to watch", "Preferred position names", "Companies to avoid", "Jobs or roles to avoid"]; issue("Update preferences", names.map((n, i) => `${n}: ${v[i]}`).join("\n"), ["prefs"]).then(i => toast("Sent as issue #" + i.number)).catch(x => toast(x.message)) }
+  if (e.target.id === "syncev") syncEvents().then(() => { toast("Done"); render() });
+});
+document.addEventListener("input", e => { if (e.target.id === "q") { S.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos) } });
+const sp = new URLSearchParams(location.search);
+if (sp.get("url") || sp.get("text")) { S.shareUrl = (sp.get("url") || (sp.get("text") || "").match(/https?:\/\/\S+/)?.[0] || ""); S.shareText = sp.get("text") && !/^https?:\/\/\S+$/.test(sp.get("text")) ? sp.get("text") : ""; history.replaceState(null, "", location.pathname); setTimeout(() => AddJob(false), 50) }
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+const cached = ls.get("jp.cache", null); if (cached) { S.jobs = cached.jobs; S.generated = cached.generated }
+render(); load();
+</script>
+</body>
+</html>
