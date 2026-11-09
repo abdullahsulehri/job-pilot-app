@@ -44,12 +44,14 @@ label{display:flex;flex-direction:column;gap:5px;font-weight:600;font-size:13px;
 .swipe{position:relative;margin-bottom:10px;border-radius:16px;overflow:hidden}
 .swipe .under{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-weight:700}
 .under.apply{background:var(--accent)}.under.skip{background:#5a2b26}
-.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;touch-action:pan-y;transition:transform .18s ease}
+.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;touch-action:pan-y;transition:transform .18s ease;display:grid;grid-template-columns:34px minmax(0,1fr);gap:0 12px}
 .card.dragging{transition:none}
-.card .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.card .co{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
-.card .ti{font-size:17px;font-weight:700;margin:2px 0 8px;overflow-wrap:anywhere}
-.card .meta{display:flex;flex-wrap:wrap;gap:6px}
+.card .tb{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px}
+.card .co{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .ti{font-size:16px;font-weight:700;margin:1px 0 6px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.card .meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;align-items:center}
+.card .meta span{white-space:nowrap}
+.m-remote{color:var(--t1)}.m-abroad{color:var(--warn);font-weight:600}.m-pay{font-weight:600}.m-route{color:var(--t2)}.m-need{color:var(--warn)}.m-cv{color:var(--ai)}.m-warn{color:var(--bad);font-weight:600}.m-muted{color:var(--muted)}
 .hint{color:var(--muted);font-size:12px;text-align:center;margin:2px 0 8px}
 .sheet{position:fixed;inset:0;background:var(--canvas);z-index:20;overflow-y:auto;padding:max(12px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
 .sheet .bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
@@ -132,17 +134,32 @@ function visible() {
     (!q || (j.title + " " + j.company + " " + j.location).toLowerCase().includes(q)))
     .sort((a, b) => ORDER[a.tier] - ORDER[b.tier] || (BRANK[a.bucket] ?? 5) - (BRANK[b.bucket] ?? 5) || b.fit - a.fit);
 }
-function chipsFor(j) {
-  const o = [];
-  o.push(`<span class="pill ${j.pay ? "good" : ""}">${esc(j.pay || "Pay not stated")}</span>`);
-  o.push(`<span class="pill blue">${esc(j.route)}</span>`);
-  (j.extras || []).filter(x => x !== "References").forEach(x => o.push(`<span class="pill warn">${esc(x)} needed</span>`));
-  o.push(`<span class="pill ai">${j.cv.action === "keep" || j.cv.action === "reuse_previous" ? "CV: no change" : j.cv.edits.length ? "CV: tweak " + j.cv.edits.length : "CV: " + j.cv.action}</span>`);
-  if (j.sector) o.push(`<span class="pill">${j.sector}</span>`);
-  j.flags.slice(0, 2).forEach(f => o.push(`<span class="pill warn">${esc(f.length > 34 ? f.slice(0, 32) + "…" : f)}</span>`));
-  if (j.deadline && j.deadline !== "Not stated") o.push(`<span class="pill bad">Due ${esc(j.deadline)}</span>`);
-  return o.join("");
+const COUNTRY = { "united arab emirates": "UAE", "saudi arabia": "KSA", "united states": "US", "united kingdom": "UK", "pakistan": "" };
+function shortPlace(j) {
+  const parts = (j.location || "").split(",").map(x => x.trim()).filter(Boolean);
+  if (!parts.length) return "";
+  const city = parts[0], last = parts[parts.length - 1].toLowerCase(), cc = last in COUNTRY ? COUNTRY[last] : parts[parts.length - 1];
+  return cc && cc.toLowerCase() !== city.toLowerCase() ? city + ", " + cc : city;
 }
+function cleanTitle(t) { return t.replace(/\s*[(\[][^)\]]*(onsite|on-site|remote|hybrid|salary|pkr|aed|sar|lahore|karachi|dubai|riyadh|full[- ]time|part[- ]time)[^)\]]*[)\]]/ig, "").replace(/\s{2,}/g, " ").trim() || t }
+function modeLabel(j) { return { onsite: "Onsite", hybrid: "Hybrid", remote_open: "Remote", remote_restricted: "Remote*", unclear: "Place?" }[j.mode] || "Place?" }
+function payShort(j) { return j.pay ? j.pay.replace(/^pay:?\s*/i, "").replace(/\b(pkr|rs\.?)\s*/ig, "").replace(/\s+(per|a)\s+month/i, "/mo").replace(/\s+(per|a)\s+year/i, "/yr").trim() : "" }
+const ROUTE = { "Email": "\u2709 Email", "Easy Apply": "\u26a1 Easy Apply", "LinkedIn (Easy Apply?)": "\u26a1 Easy Apply?", "Apply with Indeed": "Indeed", "Company site": "Company site", "Company form": "Company site", "Govt portal": "Govt portal" };
+function meta(j) {
+  const abroad = !/pakistan/i.test(j.location || "") && !/^P1 Lahore/.test(j.bucket);
+  const m = [], md = modeLabel(j);
+  m.push(`<span class="${md.startsWith("Remote") ? "m-remote" : j.mode === "onsite" && abroad ? "m-abroad" : "m-muted"}">${md}</span>`);
+  m.push(j.pay ? `<span class="m-pay">${esc(payShort(j))}</span>` : `<span class="m-muted">Pay ?</span>`);
+  m.push(`<span class="m-route">${esc(ROUTE[j.route] || j.route)}</span>`);
+  const need = (j.extras || []).filter(x => x !== "References").map(x => x === "Loom video" ? "\u25b6 video" : x === "Cover letter" ? "\u270e letter" : x.toLowerCase());
+  if (need.length) m.push(`<span class="m-need">${need.join(" ")}</span>`);
+  if (j.cv.edits.length) m.push(`<span class="m-cv">\u270e CV ${j.cv.edits.length}</span>`);
+  const w = j.flags.length; if (w) m.push(`<span class="m-warn">\u26a0 ${w}</span>`);
+  if (j.sector) m.push(`<span class="m-muted">${j.sector}</span>`);
+  if (j.deadline && j.deadline !== "Not stated") m.push(`<span class="m-warn">Due ${esc(j.deadline.slice(5))}</span>`);
+  return m.join("");
+}
+function chipsFor(j) { return `<div class="meta">${meta(j)}</div>` }
 function toast(msg, undo) {
   document.querySelector(".toast")?.remove();
   const t = document.createElement("div"); t.className = "toast"; t.innerHTML = `<span>${esc(msg)}</span>` + (undo ? '<button class="btn ghost">Undo</button>' : "");
@@ -167,9 +184,9 @@ function applyFlow(j) { mark(j, "applied"); S.open = null; render(); toast("Mark
 
 /* ---------- screens ---------- */
 function card(j) {
-  return `<div class="swipe" data-id="${j.id}"><div class="under"><span class="apply" style="color:#fff">✓ Applied</span><span style="color:#fff">Skip ✕</span></div>
-  <div class="card" data-open="${j.id}"><div class="row"><span class="co">${esc(j.company)} · ${esc(j.location)}</span><span class="tier ${tc(j.tier)}">${j.tier}</span></div>
-  <div class="ti">${esc(j.title)}</div><div class="meta">${chipsFor(j)}</div></div></div>`;
+  return `<div class="swipe" data-id="${j.id}"><div class="under"><span style="color:#fff">\u2713 Applied</span><span style="color:#fff">Skip \u2715</span></div>
+  <div class="card" data-open="${j.id}"><span class="tb tier ${tc(j.tier)}">T${j.tier.slice(-1)}</span><div style="min-width:0"><div class="co">${esc(j.company)} \u00b7 ${esc(shortPlace(j))}</div>
+  <div class="ti">${esc(cleanTitle(j.title))}</div>${chipsFor(j)}</div></div></div>`;
 }
 function filterBar() {
   const opt = (k, vals) => vals.map(([v, l]) => `<button class="chip btn2 ${S.f[k] === v ? "sel" : ""}" data-f="${k}" data-v="${v}">${l}</button>`).join("");
@@ -220,7 +237,7 @@ function Detail(j) {
     j.route === "Govt portal" ? ["Check the age limit and required documents in the advert.", "Open the official portal and register or log in.", "Copy your details below, upload the CV, submit."] :
       j.route === "Easy Apply" ? ["Open the posting.", "Use Easy Apply and upload the CV if asked.", "Come back and tap Applied."] : ["Open the application page.", "Copy your details and answers below into the form.", "Upload the CV, submit, then tap Applied."];
   return `<div class="sheet" id="sheet"><div class="bar"><button class="btn ghost" id="back">← Back</button><span style="flex:1"></span><span class="tier ${tc(j.tier)}">${j.tier}</span></div>
-  <h2>${esc(j.title)}</h2><div class="muted">${esc(j.company)} · ${esc(j.location)}</div><div class="meta" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${chipsFor(j)}</div>
+  <h2>${esc(cleanTitle(j.title))}</h2><div class="muted">${esc(j.company)} · ${esc(j.location)}</div><div style="margin-top:10px">${chipsFor(j)}</div>
   <div class="sec"><h3>The job in short</h3><div class="box">${esc(j.brief)}</div></div>
   <div class="sec"><h3>Why it fits</h3><div class="box"><ul class="l">${j.why.filter(w => w.r).map(w => `<li><b>${esc(w.k)}:</b> ${esc(w.r)}</li>`).join("")}</ul></div></div>
   ${j.gaps.length ? `<div class="sec"><h3>What is missing</h3><div class="box"><ul class="l">${j.gaps.map(g => `<li>${esc(g)}</li>`).join("")}</ul></div></div>` : ""}
