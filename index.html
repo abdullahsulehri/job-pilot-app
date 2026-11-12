@@ -52,7 +52,7 @@ label{display:flex;flex-direction:column;gap:5px;font-weight:600;font-size:13px;
 .card .meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;align-items:center}
 .card .meta span{white-space:nowrap}
 .m-remote{color:var(--t1)}.m-abroad{color:var(--warn);font-weight:600}.m-pay{font-weight:600}.m-route{color:var(--t2)}.m-need{color:var(--warn)}.m-cv{color:var(--ai)}.m-warn{color:var(--bad);font-weight:600}.m-muted{color:var(--muted)}
-.hint{color:var(--muted);font-size:12px;text-align:center;margin:2px 0 8px}
+.newdot{color:#fff;background:var(--accent);border-radius:6px;padding:0 5px;font-size:10px}.picked{border-color:var(--accent)}.card .tb{border:0;cursor:pointer}.stage{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.stage button{min-height:36px;font-size:13px;padding:6px 10px}.stage .done{background:var(--t1bg);color:var(--t1);border-color:var(--t1)}.bulk{position:sticky;bottom:0;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;gap:8px;margin-top:8px}.bulk .btn{flex:1}input[type=date]{width:auto;min-height:36px;padding:4px 8px}.sub{font-size:12px;color:var(--muted);margin-top:-2px}.banner{background:var(--badbg);border:1px solid #5a2b26;border-radius:12px;padding:10px 12px;margin:6px 0}.hint{color:var(--muted);font-size:12px;text-align:center;margin:2px 0 8px}
 .sheet{position:fixed;inset:0;background:var(--canvas);z-index:20;overflow-y:auto;padding:max(12px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
 .sheet .bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .sheet h2{font-size:20px;margin:6px 0 2px;overflow-wrap:anywhere}
@@ -79,7 +79,7 @@ ul.l{margin:0;padding-left:18px}ul.l li{margin:3px 0}
 </head>
 <body>
 <div id="app">
-  <header class="top"><h1 id="title">Leads</h1><button class="btn ghost" id="refresh" aria-label="Refresh">Refresh</button></header>
+  <header class="top"><div style="flex:1"><h1 id="title">Leads</h1><div class="sub" id="upd"></div></div><button class="btn ghost" id="selmode" hidden>Select</button><button class="btn ghost" id="refresh" aria-label="Refresh">↻</button></header>
   <main id="main"></main>
   <nav class="tabs" role="tablist" id="tabs"></nav>
 </div>
@@ -88,14 +88,17 @@ const REPO_DEFAULT = "abdullahsulehri/job-pilot-engine";
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v) } catch (e) { return d } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) {} } };
-const S = { jobs: [], generated: "", tab: "leads", q: "", f: { tier: "all", pay: "all", effort: "all", where: "all", sector: "all" },
-  marks: ls.get("jp.marks", {}), events: ls.get("jp.events", []), profile: ls.get("jp.profile", {}), cfg: ls.get("jp.cfg", { repo: REPO_DEFAULT, token: "" }), open: null, loadErr: "" };
+const FDEF = { tier: "all", pay: "all", effort: "all", where: "all", sector: "all", fresh: "all", ind: "all" };
+const S = { jobs: [], generated: "", tab: "leads", q: "", f: { ...FDEF, ...ls.get("jp.f", {}) }, marks: ls.get("jp.marks", {}), events: ls.get("jp.events", []),
+  profile: ls.get("jp.profile", {}), sent: ls.get("jp.sent", []), sel: null, cfg: ls.get("jp.cfg", { repo: REPO_DEFAULT, token: "" }), open: null, loadErr: "" };
 const ICON = { home: '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>', leads: '<path d="M16 11a4 4 0 1 0-8 0M4 21a8 8 0 0 1 16 0"/>', applied: '<path d="M4 4h16v16H4zM8 12l3 3 5-6"/>', profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>' };
 const TABS = [["home", "Home"], ["leads", "Leads"], ["applied", "Applied"], ["profile", "Profile"]];
 const tc = t => t === "Tier 1" ? "t1" : t === "Tier 2" ? "t2" : t === "Tier 3" ? "t3" : "ts";
 const ORDER = { "Tier 1": 0, "Tier 2": 1, "Tier 3": 2, "Skip": 3 };
 const BRANK = { "P1 Lahore": 0, "P1 remote (Gulf, NZ, AU)": 1, "Remote worldwide / other": 2, "P2 USA remote": 3, "P3 Gulf onsite": 4 };
 const REASONS = ["Pay too low", "Not my level", "Location or visa", "Industry", "Company", "Bad posting", "Already applied", "Other"];
+const STAGES = [["applied", "Applied"], ["call", "Call received"], ["int1", "Interview 1"], ["int2", "Interview 2"], ["offer", "Offer"], ["rejected", "Rejected"]];
+const today = () => new Date().toISOString().slice(0, 10);
 
 /* ---------- GitHub ---------- */
 async function gh(path, opt = {}) {
@@ -103,152 +106,201 @@ async function gh(path, opt = {}) {
   if (!r.ok) throw new Error("GitHub said " + r.status + (r.status === 401 || r.status === 403 ? " (check the token and its permissions)" : r.status === 404 ? " (file or repo not found)" : ""));
   return opt.raw ? r.json() : r.status === 204 ? null : r.json();
 }
-async function load(showErr) {
+async function load() {
   if (!S.cfg.token) { S.loadErr = "Add your GitHub token in Profile to load your jobs."; return render(); }
   try { const d = await gh("/contents/reports/app-jobs.json", { raw: true }); S.jobs = d.jobs; S.generated = d.generated; ls.set("jp.cache", d); S.loadErr = ""; }
   catch (e) { const c = ls.get("jp.cache", null); if (c) { S.jobs = c.jobs; S.generated = c.generated; S.loadErr = "Offline or blocked, showing the saved copy. " + e.message } else S.loadErr = e.message; }
   render();
 }
-async function issue(title, body, labels) { return gh("/issues", { method: "POST", body: JSON.stringify({ title, body, labels }) }); }
+const issue = (title, body, labels) => gh("/issues", { method: "POST", body: JSON.stringify({ title, body, labels }) });
 let eventsIssue = ls.get("jp.eventsIssue", null);
+async function postEvent(e) {
+  if (!eventsIssue) { const i = await issue("App events (do not close)", "Decisions made in the phone app. One comment per decision.", ["app-event"]); eventsIssue = i.number; ls.set("jp.eventsIssue", eventsIssue); }
+  await gh("/issues/" + eventsIssue + "/comments", { method: "POST", body: JSON.stringify({ body: "```json\n" + JSON.stringify(e) + "\n```" }) });
+}
 async function logEvent(ev) {
   const e = { ts: new Date().toISOString(), ...ev }; S.events.push(e); ls.set("jp.events", S.events);
   if (!S.cfg.token) return;
-  try {
-    if (!eventsIssue) { const i = await issue("App events (do not close)", "Decisions made in the phone app. One comment per decision.", ["app-event"]); eventsIssue = i.number; ls.set("jp.eventsIssue", eventsIssue); }
-    await gh("/issues/" + eventsIssue + "/comments", { method: "POST", body: JSON.stringify({ body: "```json\n" + JSON.stringify(e) + "\n```" }) });
-    e.synced = true; ls.set("jp.events", S.events);
-  } catch (x) { /* stays unsynced; retried on the next event */ }
+  try { await postEvent(e); e.synced = true; ls.set("jp.events", S.events) } catch (x) {}
 }
-async function syncEvents() { for (const e of S.events.filter(x => !x.synced)) { try { await gh("/issues/" + eventsIssue + "/comments", { method: "POST", body: JSON.stringify({ body: "```json\n" + JSON.stringify(e) + "\n```" }) }); e.synced = true } catch (x) { break } } ls.set("jp.events", S.events); }
+async function syncEvents() { for (const e of S.events.filter(x => !x.synced)) { try { await postEvent(e); e.synced = true } catch (x) { break } } ls.set("jp.events", S.events) }
+async function restore() {
+  try {
+    if (!eventsIssue) { const l = await gh("/issues?labels=app-event&state=all&per_page=5"); if (!l.length) return toast("No saved log found"); eventsIssue = l[l.length - 1].number; ls.set("jp.eventsIssue", eventsIssue) }
+    let page = 1, all = [];
+    for (;;) { const c = await gh("/issues/" + eventsIssue + "/comments?per_page=100&page=" + page); all = all.concat(c); if (c.length < 100) break; page++ }
+    const marks = {};
+    for (const c of all) { const m = c.body.match(/```json\n([\s\S]*?)\n```/); if (!m) continue; let e; try { e = JSON.parse(m[1]) } catch (x) { continue }
+      const id = e.job; if (!id) continue; const cur = marks[id] || { stages: {} };
+      if (e.action === "applied" || e.action === "skipped") marks[id] = { ...cur, v: e.action, at: (e.ts || "").slice(0, 10), reason: e.reason || "", stages: e.action === "applied" ? { ...cur.stages, applied: (e.ts || "").slice(0, 10) } : cur.stages };
+      else if (e.action === "undo") delete marks[id];
+      else if (e.action === "reason" && marks[id]) marks[id].reason = e.reason;
+      else if (e.action === "stage" && marks[id]) marks[id].stages = { ...marks[id].stages, [e.stage]: e.date } }
+    S.marks = marks; ls.set("jp.marks", marks); render(); toast("Restored " + Object.keys(marks).length + " decisions")
+  } catch (e) { toast(e.message) }
+}
 
 /* ---------- helpers ---------- */
+const cleanTitle = t => t.replace(/\s*[(\[][^)\]]*(onsite|on-site|remote|hybrid|salary|pkr|aed|sar|lahore|karachi|dubai|riyadh|full[- ]time|part[- ]time)[^)\]]*[)\]]/ig, "").replace(/\s{2,}/g, " ").trim() || t;
+const modeLabel = j => ({ onsite: "Onsite", hybrid: "Hybrid", remote_open: "Remote", remote_restricted: "Remote*", unclear: "Place?" }[j.mode] || "Place?");
+const ROUTE = { "Email": "✉ Email", "Easy Apply": "⚡ Easy Apply", "LinkedIn (Easy Apply?)": "⚡ Easy Apply?", "Apply with Indeed": "Indeed", "Company site": "Company site", "Company form": "Company site", "Govt portal": "Govt portal" };
+const placeOf = j => j.place || (j.location || "").split(",")[0];
+const ageText = j => { const d = j.age_days; if (d == null) return ""; return d <= 0 ? "today" : d < 14 ? d + "d" : Math.round(d / 7) + "w" };
+const dueText = j => { if (!j.deadline || j.deadline === "Not stated") return ""; const d = new Date(j.deadline); return isNaN(d) ? "" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) };
+const visibleFlags = j => j.flags.filter(f => !/ask about visa/i.test(f));
 const whereOf = j => /Lahore/.test(j.bucket) ? "Lahore" : /remote|Remote/.test(j.bucket) ? "Remote" : /Gulf/.test(j.bucket) ? "Gulf" : "Other";
-const payKnown = j => !!j.pay;
+const focusInd = j => /account|financ|audit|tax|bank|insur/i.test((j.industry || "") + " " + j.company);
+const open_ = () => S.jobs.filter(j => j.tier !== "Skip" && !S.marks[j.id]);
+const PRED = { tier: (j, v) => j.tier === v, where: (j, v) => whereOf(j) === v, pay: (j, v) => !!j.pay, effort: (j, v) => j.effort === v, sector: (j, v) => !!j.sector, fresh: (j, v) => !!j.new, ind: (j, v) => focusInd(j) || j.watch };
 function visible() {
-  const q = S.q.toLowerCase(), f = S.f;
-  return S.jobs.filter(j => j.tier !== "Skip" && !S.marks[j.id] &&
-    (f.tier === "all" || j.tier === f.tier) && (f.pay === "all" || (f.pay === "stated" ? payKnown(j) : !payKnown(j))) &&
-    (f.effort === "all" || j.effort === f.effort) && (f.where === "all" || whereOf(j) === f.where) &&
-    (f.sector === "all" || (f.sector === "Govt" ? !!j.sector : !j.sector)) &&
-    (!q || (j.title + " " + j.company + " " + j.location).toLowerCase().includes(q)))
+  const q = S.q.toLowerCase();
+  return open_().filter(j => Object.keys(S.f).every(k => S.f[k] === "all" || PRED[k](j, S.f[k])) && (!q || (j.title + " " + j.company + " " + j.location + " " + (j.industry || "")).toLowerCase().includes(q)))
     .sort((a, b) => ORDER[a.tier] - ORDER[b.tier] || (BRANK[a.bucket] ?? 5) - (BRANK[b.bucket] ?? 5) || b.fit - a.fit);
 }
-const COUNTRY = { "united arab emirates": "UAE", "saudi arabia": "KSA", "united states": "US", "united kingdom": "UK", "pakistan": "" };
-function shortPlace(j) {
-  const parts = (j.location || "").split(",").map(x => x.trim()).filter(Boolean);
-  if (!parts.length) return "";
-  const city = parts[0], last = parts[parts.length - 1].toLowerCase(), cc = last in COUNTRY ? COUNTRY[last] : parts[parts.length - 1];
-  return cc && cc.toLowerCase() !== city.toLowerCase() ? city + ", " + cc : city;
-}
-function cleanTitle(t) { return t.replace(/\s*[(\[][^)\]]*(onsite|on-site|remote|hybrid|salary|pkr|aed|sar|lahore|karachi|dubai|riyadh|full[- ]time|part[- ]time)[^)\]]*[)\]]/ig, "").replace(/\s{2,}/g, " ").trim() || t }
-function modeLabel(j) { return { onsite: "Onsite", hybrid: "Hybrid", remote_open: "Remote", remote_restricted: "Remote*", unclear: "Place?" }[j.mode] || "Place?" }
-function payShort(j) { return j.pay ? j.pay.replace(/^pay:?\s*/i, "").replace(/\b(pkr|rs\.?)\s*/ig, "").replace(/\s+(per|a)\s+month/i, "/mo").replace(/\s+(per|a)\s+year/i, "/yr").trim() : "" }
-const ROUTE = { "Email": "\u2709 Email", "Easy Apply": "\u26a1 Easy Apply", "LinkedIn (Easy Apply?)": "\u26a1 Easy Apply?", "Apply with Indeed": "Indeed", "Company site": "Company site", "Company form": "Company site", "Govt portal": "Govt portal" };
 function meta(j) {
   const abroad = !/pakistan/i.test(j.location || "") && !/^P1 Lahore/.test(j.bucket);
   const m = [], md = modeLabel(j);
   m.push(`<span class="${md.startsWith("Remote") ? "m-remote" : j.mode === "onsite" && abroad ? "m-abroad" : "m-muted"}">${md}</span>`);
-  m.push(j.pay ? `<span class="m-pay">${esc(payShort(j))}</span>` : `<span class="m-muted">Pay ?</span>`);
+  m.push(j.pay ? `<span class="m-pay">${esc(j.pay)}</span>` : `<span class="m-muted">Pay ?</span>`);
   m.push(`<span class="m-route">${esc(ROUTE[j.route] || j.route)}</span>`);
-  const need = (j.extras || []).filter(x => x !== "References").map(x => x === "Loom video" ? "\u25b6 video" : x === "Cover letter" ? "\u270e letter" : x.toLowerCase());
+  const need = (j.extras || []).filter(x => x !== "References").map(x => x === "Loom video" ? "▶ video" : x === "Cover letter" ? "✎ letter" : x.toLowerCase());
   if (need.length) m.push(`<span class="m-need">${need.join(" ")}</span>`);
-  if (j.cv.edits.length) m.push(`<span class="m-cv">\u270e CV ${j.cv.edits.length}</span>`);
-  const w = j.flags.length; if (w) m.push(`<span class="m-warn">\u26a0 ${w}</span>`);
+  if (j.cv.edits.length) m.push(`<span class="m-cv">✎ CV ${j.cv.edits.length}</span>`);
+  if (visibleFlags(j).length) m.push(`<span class="m-warn">⚠ ${visibleFlags(j).length}</span>`);
+  if (j.visa === "sponsored") m.push(`<span class="m-remote">Visa ✓</span>`);
+  if (j.contract && j.contract !== "FT") m.push(`<span class="m-muted">${j.contract}</span>`);
   if (j.sector) m.push(`<span class="m-muted">${j.sector}</span>`);
-  if (j.deadline && j.deadline !== "Not stated") m.push(`<span class="m-warn">Due ${esc(j.deadline.slice(5))}</span>`);
+  const due = dueText(j); if (due) m.push(`<span class="m-warn">Due ${due}</span>`); else if (ageText(j)) m.push(`<span class="m-muted">${ageText(j)}</span>`);
   return m.join("");
 }
-function chipsFor(j) { return `<div class="meta">${meta(j)}</div>` }
-function toast(msg, undo) {
+const chipsFor = j => `<div class="meta">${meta(j)}</div>`;
+function toast(msg, ...acts) {
   document.querySelector(".toast")?.remove();
-  const t = document.createElement("div"); t.className = "toast"; t.innerHTML = `<span>${esc(msg)}</span>` + (undo ? '<button class="btn ghost">Undo</button>' : "");
-  document.body.appendChild(t); const timer = setTimeout(() => t.remove(), 6000);
-  if (undo) t.querySelector("button").onclick = () => { clearTimeout(timer); t.remove(); undo() };
+  const t = document.createElement("div"); t.className = "toast"; t.innerHTML = `<span>${esc(msg)}</span>` + acts.map((a, i) => `<button class="btn ghost" data-a="${i}">${esc(a[0])}</button>`).join("");
+  document.body.appendChild(t); const timer = setTimeout(() => t.remove(), 7000);
+  t.onclick = e => { const b = e.target.closest("[data-a]"); if (b) { clearTimeout(timer); t.remove(); acts[+b.dataset.a][1]() } };
 }
 async function copy(text, label) { try { await navigator.clipboard.writeText(text); toast((label || "Text") + " copied") } catch (e) { toast("Copy blocked: select the text instead") } }
+function ago(iso) { if (!iso) return "never"; const h = (Date.now() - new Date(iso)) / 36e5; return h < 1 ? "just now" : h < 24 ? Math.round(h) + "h ago" : Math.round(h / 24) + "d ago" }
 
-/* ---------- actions ---------- */
-function mark(j, v, reason) { S.marks[j.id] = { v, at: new Date().toISOString().slice(0, 10), reason: reason || "" }; ls.set("jp.marks", S.marks); logEvent({ job: j.id, title: j.title, company: j.company, tier: j.tier, action: v, reason: reason || "" }); }
-function unmark(j) { delete S.marks[j.id]; ls.set("jp.marks", S.marks); logEvent({ job: j.id, action: "undo" }); render(); }
-function skipFlow(j) {
+/* ---------- decisions ---------- */
+function mark(j, v, reason) { S.marks[j.id] = { v, at: today(), reason: reason || "", stages: v === "applied" ? { applied: today() } : {} }; ls.set("jp.marks", S.marks); logEvent({ job: j.id, title: j.title, company: j.company, tier: j.tier, action: v, reason: reason || "" }) }
+function unmark(j) { delete S.marks[j.id]; ls.set("jp.marks", S.marks); logEvent({ job: j.id, action: "undo" }); render() }
+function setReason(ids, reason) { ids.forEach(id => { if (S.marks[id]) { S.marks[id].reason = reason; logEvent({ job: id, action: "reason", reason }) } }); ls.set("jp.marks", S.marks); render() }
+function setStage(id, stage, date) { const m = S.marks[id]; if (!m) return; m.stages = { ...(m.stages || {}) }; if (date) m.stages[stage] = date; else delete m.stages[stage]; ls.set("jp.marks", S.marks); logEvent({ job: id, action: "stage", stage, date: date || "" }); render() }
+function quickSkip(j) { mark(j, "skipped"); S.open = null; render(); toast("Skipped", ["Undo", () => unmark(j)], ["Add reason", () => reasonSheet([j.id])]) }
+function quickApply(j) { mark(j, "applied"); S.open = null; render(); toast("Marked applied", ["Undo", () => unmark(j)]) }
+function voice(input, btn) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast("Voice typing is not available here. Use the microphone on your keyboard.");
+  const r = new SR(); r.lang = "en-US"; r.interimResults = false; btn.classList.add("primary");
+  r.onresult = e => { input.value = (input.value + " " + e.results[0][0].transcript).trim() }; r.onend = () => btn.classList.remove("primary"); r.onerror = () => { btn.classList.remove("primary"); toast("Could not hear that. Try again, or use the keyboard microphone.") };
+  try { r.start() } catch (e) {}
+}
+function reasonSheet(ids) {
   const m = document.createElement("div"); m.className = "modal";
-  m.innerHTML = `<div class="inner"><h2 style="margin:0 0 4px;font-size:18px">Why skip this job?</h2><p class="muted small" style="margin:0 0 10px">Optional. After about a month the engine suggests rule changes from your reasons. Nothing changes by itself.</p><div class="chips" id="rs"></div><label style="margin-top:12px">Anything to add<input type="text" id="rn" placeholder="e.g. real estate, no growth"></label><div class="row2"><button class="btn" id="rc">Cancel</button><button class="btn danger" id="rok">Skip job</button></div></div>`;
+  m.innerHTML = `<div class="inner"><h2 style="margin:0 0 4px;font-size:18px">Why skip${ids.length > 1 ? " these " + ids.length + " jobs" : ""}?</h2><p class="muted small" style="margin:0 0 10px">Optional. After about a month the engine suggests rule changes from your reasons. Nothing changes by itself.</p><div class="chips" id="rs"></div>
+  <label style="margin-top:12px">Your comment<div style="display:flex;gap:8px"><input type="text" id="rn" placeholder="Type, or press the microphone"><button class="btn mic" id="mic" aria-label="Voice note">🎙</button></div></label>
+  <div class="row2"><button class="btn" id="rc">Cancel</button><button class="btn primary" id="rok">Save reason</button></div></div>`;
   document.body.appendChild(m); let pick = "";
   $("#rs", m).innerHTML = REASONS.map(r => `<button class="chip btn2" data-r="${r}">${r}</button>`).join("");
-  m.onclick = e => { const b = e.target.closest("[data-r]"); if (b) { pick = b.dataset.r; m.querySelectorAll("[data-r]").forEach(x => x.classList.toggle("sel", x === b)) } if (e.target === m) m.remove() };
-  $("#rc", m).onclick = () => { m.remove(); render() };
-  $("#rok", m).onclick = () => { const note = $("#rn", m).value.trim(); m.remove(); mark(j, "skipped", [pick, note].filter(Boolean).join(": ")); S.open = null; render(); toast("Skipped", () => unmark(j)) };
+  m.onclick = e => { const b = e.target.closest("[data-r]"); if (b) { pick = pick === b.dataset.r ? "" : b.dataset.r; m.querySelectorAll("[data-r]").forEach(x => x.classList.toggle("sel", x.dataset.r === pick)) } if (e.target === m) m.remove() };
+  $("#mic", m).onclick = () => voice($("#rn", m), $("#mic", m));
+  $("#rc", m).onclick = () => m.remove();
+  $("#rok", m).onclick = () => { const reason = [pick, $("#rn", m).value.trim()].filter(Boolean).join(": "); m.remove(); if (reason) setReason(ids, reason) };
 }
-function applyFlow(j) { mark(j, "applied"); S.open = null; render(); toast("Marked applied", () => unmark(j)) }
+function legend() {
+  const m = document.createElement("div"); m.className = "modal"; m.innerHTML = `<div class="inner"><h2 style="margin:0 0 8px;font-size:18px">What the tiers mean</h2>
+  <div class="box"><b class="tier t1">T1</b> Apply now. Strong fit, nothing blocking you.</div><div class="box"><b class="tier t2">T2</b> Worth applying. Good fit, or one open question to check.</div><div class="box"><b class="tier t3">T3</b> Only if you have time. Weaker fit or unclear details.</div>
+  <p class="muted small">Tiers come from fit, pay, eligibility and how complete the posting is. They can change when the rules change.</p><button class="btn" id="lc">Close</button></div>`;
+  document.body.appendChild(m); m.onclick = e => { if (e.target === m || e.target.id === "lc") m.remove() };
+}
 
 /* ---------- screens ---------- */
 function card(j) {
-  return `<div class="swipe" data-id="${j.id}"><div class="under"><span style="color:#fff">\u2713 Applied</span><span style="color:#fff">Skip \u2715</span></div>
-  <div class="card" data-open="${j.id}"><span class="tb tier ${tc(j.tier)}">T${j.tier.slice(-1)}</span><div style="min-width:0"><div class="co">${esc(j.company)} \u00b7 ${esc(shortPlace(j))}</div>
+  const sel = S.sel, on = sel && sel.has(j.id);
+  return `<div class="swipe" data-id="${j.id}"><div class="under"><span style="color:#fff">✓ Applied</span><span style="color:#fff">Skip ✕</span></div>
+  <div class="card ${on ? "picked" : ""}" data-open="${j.id}"><button class="tb tier ${tc(j.tier)}" data-legend="1" aria-label="${j.tier}">${sel ? (on ? "✓" : "○") : "T" + j.tier.slice(-1)}</button><div style="min-width:0"><div class="co">${j.watch ? "★ " : ""}${j.new ? '<b class="newdot">NEW</b> ' : ""}${esc(j.company)} · ${esc(placeOf(j))}${j.industry ? " · " + esc(j.industry) : ""}</div>
   <div class="ti">${esc(cleanTitle(j.title))}</div>${chipsFor(j)}</div></div></div>`;
 }
 function filterBar() {
-  const opt = (k, vals) => vals.map(([v, l]) => `<button class="chip btn2 ${S.f[k] === v ? "sel" : ""}" data-f="${k}" data-v="${v}">${l}</button>`).join("");
-  return `<input type="search" id="q" placeholder="Search roles or companies" value="${esc(S.q)}" aria-label="Search">
-  <div class="filters">${opt("tier", [["all", "All tiers"], ["Tier 1", "Tier 1"], ["Tier 2", "Tier 2"], ["Tier 3", "Tier 3"]])}</div>
-  <div class="filters">${opt("where", [["all", "Anywhere"], ["Lahore", "Lahore"], ["Remote", "Remote"], ["Gulf", "Gulf"]])}${opt("pay", [["all", "Any pay"], ["stated", "Pay stated"]])}${opt("effort", [["all", "Any effort"], ["low", "Low effort"], ["medium", "Medium"], ["high", "High"]])}${opt("sector", [["all", "All sectors"], ["Govt", "Govt"]])}</div>`;
+  const base = open_(), cnt = (k, v) => base.filter(j => PRED[k](j, v)).length;
+  const opt = (k, vals) => vals.map(([v, l]) => `<button class="chip btn2 ${S.f[k] === v ? "sel" : ""}" data-f="${k}" data-v="${v}">${l}${v === "all" ? "" : " " + cnt(k, v)}</button>`).join("");
+  return `<input type="search" id="q" placeholder="Search roles, companies, industries" value="${esc(S.q)}" aria-label="Search">
+  <div class="filters">${opt("tier", [["all", "All tiers"], ["Tier 1", "T1"], ["Tier 2", "T2"], ["Tier 3", "T3"]])}${opt("fresh", [["all", "Any age"], ["new", "New"]])}</div>
+  <div class="filters">${opt("where", [["all", "Anywhere"], ["Lahore", "Lahore"], ["Remote", "Remote"], ["Gulf", "Gulf"]])}${opt("ind", [["all", "Any industry"], ["focus", "Finance & accounting"]])}${opt("pay", [["all", "Any pay"], ["stated", "Pay stated"]])}${opt("effort", [["all", "Any effort"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]])}${opt("sector", [["all", "All sectors"], ["Govt", "Govt"]])}</div>`;
 }
 function Leads() {
   const v = visible();
-  return filterBar() + `<div class="hint">← swipe left to skip · swipe right to mark applied →</div>` +
-    (v.length ? v.map(card).join("") : `<div class="empty">${S.jobs.length ? "No jobs match these filters." : (S.loadErr || "No jobs yet.")}</div>`);
+  return filterBar() + `<div class="hint">swipe left to skip · swipe right to mark applied</div>` +
+    (v.length ? v.map(card).join("") : `<div class="empty">${S.jobs.length ? "No jobs match these filters." : (S.loadErr || "No jobs yet.")}</div>`) +
+    (S.sel ? `<div class="bulk"><button class="btn danger" id="bskip">Skip ${S.sel.size}</button><button class="btn primary" id="bapply">Applied ${S.sel.size}</button></div>` : "");
+}
+function tokenBanner() {
+  const e = S.profile.tokenExp; if (!e) return ""; const d = Math.round((new Date(e) - Date.now()) / 864e5);
+  return d <= 14 ? `<div class="banner"><b>${d < 0 ? "Your GitHub token has expired" : "Your GitHub token expires in " + d + " days"}.</b> Make a new one and paste it in Profile.</div>` : "";
 }
 function Home() {
-  const live = S.jobs.filter(j => j.tier !== "Skip" && !S.marks[j.id]);
-  const c = t => live.filter(j => j.tier === t).length;
-  const due = live.filter(j => j.deadline && j.deadline !== "Not stated").sort((a, b) => a.deadline.localeCompare(b.deadline)).slice(0, 3);
-  return `${S.loadErr ? `<div class="box" style="border-color:#5a2b26"><b>${esc(S.loadErr)}</b></div>` : ""}
-  <div class="stat" style="margin-top:8px"><div><b>${c("Tier 1")}</b><span>Tier 1</span></div><div><b>${c("Tier 2")}</b><span>Tier 2</span></div><div><b>${c("Tier 3")}</b><span>Tier 3</span></div><div><b>${Object.values(S.marks).filter(m => m.v === "applied").length}</b><span>Applied</span></div></div>
-  <div class="sec"><h3>Add a job</h3><div class="row2"><button class="btn primary" id="addjob">Add a link or text</button><button class="btn" id="addshot">Add screenshots</button></div></div>
-  <div class="sec"><h3>Top of your list</h3>${live.slice().sort((a, b) => ORDER[a.tier] - ORDER[b.tier] || (BRANK[a.bucket] ?? 5) - (BRANK[b.bucket] ?? 5) || b.fit - a.fit).slice(0, 3).map(card).join("") || '<div class="empty">Nothing yet.</div>'}</div>
+  const live = open_(), c = t => live.filter(j => j.tier === t).length, fresh = live.filter(j => j.new);
+  const due = live.filter(j => dueText(j)).sort((a, b) => a.deadline.localeCompare(b.deadline)).slice(0, 3);
+  return `${tokenBanner()}${S.loadErr ? `<div class="banner">${esc(S.loadErr)}</div>` : ""}
+  <div class="stat" style="margin-top:8px"><div><b>${c("Tier 1")}</b><span>T1</span></div><div><b>${c("Tier 2")}</b><span>T2</span></div><div><b>${c("Tier 3")}</b><span>T3</span></div><div><b>${fresh.length}</b><span>New</span></div></div>
+  <div class="sec"><h3>Add a job</h3><div class="row2"><button class="btn primary" id="addjob">Link or text</button><button class="btn" id="addshot">Screenshots</button></div></div>
+  ${fresh.length ? `<div class="sec"><h3>New since the last run</h3>${fresh.sort((a, b) => ORDER[a.tier] - ORDER[b.tier] || b.fit - a.fit).slice(0, 5).map(card).join("")}</div>` : `<div class="sec"><h3>Top of your list</h3>${live.slice().sort((a, b) => ORDER[a.tier] - ORDER[b.tier] || b.fit - a.fit).slice(0, 3).map(card).join("") || '<div class="empty">Nothing yet.</div>'}</div>`}
   ${due.length ? `<div class="sec"><h3>Closing soon</h3>${due.map(card).join("")}</div>` : ""}
-  <p class="muted small">Data from ${esc(S.generated || "never")}. Tiers are the engine's call; skip with a reason and it learns what you dislike.</p>`;
+  ${S.sent.length ? `<div class="sec"><h3>Sent to the engine</h3>${S.sent.slice(-5).reverse().map(x => `<div class="box"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(x.kind)}</b><span class="muted small">${esc(x.at)}</span></div><div class="muted small">${esc(x.title)}</div><a href="https://github.com/${esc(S.cfg.repo)}/issues/${x.n}" target="_blank" rel="noopener">See the reply (issue #${x.n})</a></div>`).join("")}</div>` : ""}`;
 }
 function Applied() {
   const by = v => S.jobs.filter(j => S.marks[j.id]?.v === v);
-  const row = j => `<div class="box" data-open="${j.id}"><div class="row" style="display:flex;justify-content:space-between;gap:8px"><b>${esc(j.title)}</b><span class="muted small">${S.marks[j.id].at}</span></div><div class="muted">${esc(j.company)}</div>${S.marks[j.id].reason ? `<div class="small" style="margin-top:4px">Reason: ${esc(S.marks[j.id].reason)}</div>` : ""}<button class="btn ghost small" data-undo="${j.id}" style="margin-top:6px">Move back to Leads</button></div>`;
+  const stageNow = m => { const done = STAGES.filter(([k]) => (m.stages || {})[k]); return done.length ? done[done.length - 1][1] : "Applied" };
+  const row = j => { const m = S.marks[j.id]; return `<div class="box"><div style="display:flex;justify-content:space-between;gap:8px" data-open="${j.id}"><b>${esc(cleanTitle(j.title))}</b><span class="muted small">${m.at}</span></div><div class="muted">${esc(j.company)}</div>
+    ${m.v === "applied" ? `<div class="small" style="margin-top:6px"><b>${stageNow(m)}</b></div><div class="stage">${STAGES.slice(1).map(([k, l]) => `<button class="btn ${(m.stages || {})[k] ? "done" : ""}" data-stage="${j.id}|${k}">${l}${(m.stages || {})[k] ? ": " + (m.stages[k]).slice(5) : ""}</button>`).join("")}</div>` : `<div class="small" style="margin-top:4px">${m.reason ? "Reason: " + esc(m.reason) : "No reason added"}</div><button class="btn ghost small" data-reason="${j.id}">${m.reason ? "Edit reason" : "Add reason"}</button>`}
+    <button class="btn ghost small" data-undo="${j.id}" style="margin-top:6px">Move back to Leads</button></div>` };
   return `<div class="sec"><h3>Applied (${by("applied").length})</h3>${by("applied").map(row).join("") || '<div class="empty">Swipe right on a lead, or press Applied, after you apply.</div>'}</div>
   <div class="sec"><h3>Skipped (${by("skipped").length})</h3>${by("skipped").map(row).join("") || '<div class="empty">Nothing skipped yet.</div>'}</div>`;
 }
 function Profile() {
   const p = S.profile, f = (id, l, t = "text", ph = "") => `<label>${l}<input type="${t}" id="${id}" value="${esc(p[id] || "")}" placeholder="${ph}"></label>`;
-  return `<div class="sec"><h3>Connection</h3>
+  return `<div class="sec"><h3>Connection</h3>${tokenBanner()}
   <label>GitHub repo<input type="text" id="repo" value="${esc(S.cfg.repo)}"></label>
   <label>GitHub token <span class="small">stored on this phone only; never share it in chat</span><input type="password" id="token" value="${esc(S.cfg.token)}" placeholder="github_pat_..."></label>
-  <div class="row2"><button class="btn primary" id="savecfg">Save and load jobs</button></div></div>
+  ${f("tokenExp", "Token expires on", "date")}
+  <div class="row2"><button class="btn primary" id="savecfg">Save and load jobs</button><button class="btn" id="restore">Restore my decisions</button></div></div>
   <div class="sec"><h3>Your details (kept on this phone)</h3>${f("name", "Full name")}${f("phone", "Phone")}${f("email", "Email")}${f("linkedin", "LinkedIn")}${f("cvsite", "Interactive CV link", "text", "https://abdullahsulehri.github.io/interactive-cv/")}${f("gmail", "Gmail account used to apply")}${f("notice", "Notice period", "text", "30 days, negotiable")}
   <button class="btn" id="savep">Save details</button></div>
+  <div class="sec"><h3>Accounts you need</h3><div class="chips">${["Indeed", "LinkedIn", "Bayt"].map(a => `<button class="chip btn2 ${(p.accts || []).includes(a) ? "sel" : ""}" data-acct="${a}">${a}${(p.accts || []).includes(a) ? " ready" : ""}</button>`).join("")}</div></div>
   <div class="sec"><h3>Preferences</h3><p class="muted small">Separate items with semicolons. Sent as an issue; the engine applies them on its next run.</p>
-  ${["Industries to watch", "Companies to watch", "Preferred position names", "Companies to avoid", "Jobs or roles to avoid"].map((l, i) => `<label>${l}<input type="text" data-pref="${i}" value="${esc((p.prefs || [])[i] || "")}"></label>`).join("")}
+  ${["Industries to watch", "Companies to watch", "Preferred position names", "Companies to avoid", "Jobs or roles to avoid"].map((l, i) => `<label>${l}<input type="text" data-pref="${i}" value="${esc((p.prefs || [])[i] || (i === 0 ? "accounting; finance" : ""))}"></label>`).join("")}
   <button class="btn" id="sendprefs">Send preferences</button></div>
   <div class="sec"><h3>Decisions log</h3><p class="muted small">${S.events.length} decisions recorded, ${S.events.filter(e => !e.synced).length} not yet sent.</p><button class="btn" id="syncev">Send now</button></div>`;
 }
 function Detail(j) {
-  const edits = j.cv.edits;
-  const cvTxt = j.cv.action === "keep" || j.cv.action === "reuse_previous" ? "No change needed: the base CV covers what the posting asks." : j.cv.action === "minor" ? "Small edits likely." : "Tailoring likely, please review.";
-  const email = j.route === "Email";
-  const steps = email ? ["Review the CV decision above.", "Prepare the email draft (coming in the next build: it creates a finished Gmail draft with the CV attached).", "Open Gmail, check, press Send."] :
+  const edits = j.cv.edits, email = j.route === "Email", m = S.marks[j.id];
+  const cvTxt = j.cv.action === "keep" || j.cv.action === "reuse_previous" ? "Send your standard CV. It already covers what the posting asks." : j.cv.action === "minor" ? "Standard CV with a few valid additions:" : "This posting needs a tailored CV. Please review.";
+  const acct = { "Apply with Indeed": "Indeed", "LinkedIn (Easy Apply?)": "LinkedIn" }[j.route]; const needAcct = acct && !(S.profile.accts || []).includes(acct);
+  const steps = email ? ["Review the CV decision above.", "Prepare the email draft (coming next: it creates a finished Gmail draft with the CV attached).", "Open Gmail, check, press Send."] :
     j.route === "Govt portal" ? ["Check the age limit and required documents in the advert.", "Open the official portal and register or log in.", "Copy your details below, upload the CV, submit."] :
-      j.route === "Easy Apply" ? ["Open the posting.", "Use Easy Apply and upload the CV if asked.", "Come back and tap Applied."] : ["Open the application page.", "Copy your details and answers below into the form.", "Upload the CV, submit, then tap Applied."];
-  return `<div class="sheet" id="sheet"><div class="bar"><button class="btn ghost" id="back">← Back</button><span style="flex:1"></span><span class="tier ${tc(j.tier)}">${j.tier}</span></div>
-  <h2>${esc(cleanTitle(j.title))}</h2><div class="muted">${esc(j.company)} · ${esc(j.location)}</div><div style="margin-top:10px">${chipsFor(j)}</div>
+      j.route === "Apply with Indeed" ? ["Open the posting and tap Apply with Indeed.", "Check the CV Indeed will send, then answer its questions.", "Come back and tap Applied."] :
+        j.route.startsWith("LinkedIn") ? ["Open the posting. If it shows Easy Apply, use it and upload the CV.", "If it sends you to the company site, use the details below.", "Come back and tap Applied."] : ["Open the application page.", "Copy your details and answers below into the form.", "Upload the CV, submit, then tap Applied."];
+  const visaNote = j.mode === "onsite" && !/pakistan/i.test(j.location || "") && j.visa !== "sponsored" ? "Visa is not stated: ask about it in your first message." : "";
+  const facts = [["Industry", j.industry], ["Company size", j.size], ["Contract", { FT: "Full-time", PT: "Part-time" }[j.contract] || j.contract], ["Working days", j.working_days], ["Posted", j.posted ? j.posted + (ageText(j) ? " (" + ageText(j) + ")" : "") : ""], ["Pay as stated", j.pay_original], ["Benefits", (j.benefits || []).join(", ")]].filter(r => r[1]);
+  const asked = S.sent.filter(x => x.job === j.id);
+  return `<div class="sheet" id="sheet"><div class="bar"><button class="btn ghost" id="back">← Back</button><span style="flex:1"></span><button class="tier ${tc(j.tier)}" data-legend="1" style="border:0">${j.tier}</button></div>
+  <h2>${j.watch ? "★ " : ""}${esc(cleanTitle(j.title))}</h2><div class="muted">${esc(j.company)} · ${esc(placeOf(j))}</div><div style="margin-top:10px">${chipsFor(j)}</div>
+  ${needAcct ? `<div class="banner" style="margin-top:10px">This route needs a ${acct} account. Set it up first, then tick ${acct} under Accounts in Profile.</div>` : ""}
   <div class="sec"><h3>The job in short</h3><div class="box">${esc(j.brief)}</div></div>
+  ${facts.length ? `<div class="sec"><h3>Job facts</h3><div class="box">${facts.map(r => `<div class="kv"><span class="muted">${r[0]}</span><span style="text-align:right">${esc(r[1])}</span></div>`).join("")}</div></div>` : ""}
   <div class="sec"><h3>Why it fits</h3><div class="box"><ul class="l">${j.why.filter(w => w.r).map(w => `<li><b>${esc(w.k)}:</b> ${esc(w.r)}</li>`).join("")}</ul></div></div>
   ${j.gaps.length ? `<div class="sec"><h3>What is missing</h3><div class="box"><ul class="l">${j.gaps.map(g => `<li>${esc(g)}</li>`).join("")}</ul></div></div>` : ""}
-  ${j.flags.length ? `<div class="sec"><h3>Check before applying</h3><div class="box"><ul class="l">${j.flags.map(g => `<li>${esc(g)}</li>`).join("")}</ul></div></div>` : ""}
+  ${visibleFlags(j).length || visaNote ? `<div class="sec"><h3>Check before applying</h3><div class="box"><ul class="l">${[...visibleFlags(j), visaNote].filter(Boolean).map(g => `<li>${esc(g)}</li>`).join("")}</ul></div></div>` : ""}
   <div class="sec"><h3>Your CV</h3><div class="box">${cvTxt}${edits.length ? `<ul class="l" style="margin-top:6px">${edits.map(e => `<li>For "${esc(e.requirement)}": ${e.fact ? "add \"" + esc(e.fact.slice(0, 110)) + "…\"" : "adjust the summary"}${e.needs_approval ? " <span class='pill ai'>needs your approval</span>" : ""}</li>`).join("")}</ul>` : ""}${j.cv.gaps.length ? `<div class="small muted" style="margin-top:6px">Not claimed (no verified fact): ${j.cv.gaps.map(esc).join("; ")}</div>` : ""}</div></div>
-  <div class="sec"><h3>How to apply: ${esc(j.route)}</h3><div class="box"><ol class="l">${steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+  <div class="sec"><h3>How to apply: ${esc(ROUTE[j.route] || j.route)}</h3><div class="box"><ol class="l">${steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
   ${j.apply_to && email ? `<div class="kv"><span>To</span><code>${esc(j.apply_to)}</code><button class="btn ghost" data-copy="${esc(j.apply_to)}">Copy</button></div>` : ""}
-  ${(j.extras || []).length ? `<div class="small muted" style="margin-top:6px">The posting also asks for: ${j.extras.map(esc).join(", ")}.</div>` : ""}</div>
-  ${!email ? kit() : ""}</div>
-  <div class="sec"><h3>Ask about this job</h3><textarea id="ask" placeholder="e.g. Does this role need a video? Is the visa provided?"></textarea><button class="btn ai" id="asksend" style="margin-top:8px">Ask</button><p class="muted small">Answers come from the posting and your facts only. It replies in a GitHub issue; this build does not show the reply here yet.</p></div>
-  <div class="sec row2"><a class="btn primary" style="text-align:center;text-decoration:none" href="${esc(j.url)}" target="_blank" rel="noopener">Open posting</a><button class="btn" id="doapply">Applied</button><button class="btn danger" id="doskip">Skip</button></div></div>`;
+  ${(j.extras || []).length ? `<div class="small muted" style="margin-top:6px">The posting also asks for: ${j.extras.map(esc).join(", ")}.</div>` : ""}</div>${!email ? kit() : ""}</div>
+  ${m?.v === "applied" ? `<div class="sec"><h3>Progress</h3><div class="stage">${STAGES.slice(1).map(([k, l]) => `<button class="btn ${(m.stages || {})[k] ? "done" : ""}" data-stage="${j.id}|${k}">${l}${(m.stages || {})[k] ? ": " + m.stages[k].slice(5) : ""}</button>`).join("")}</div></div>` : ""}
+  <div class="sec"><h3>Ask about this job</h3><textarea id="ask" placeholder="e.g. Does this role need a video? Is the visa provided?"></textarea><button class="btn ai" id="asksend" style="margin-top:8px">Ask</button>
+  ${asked.map(x => `<div class="box" style="margin-top:8px"><div class="small muted">${esc(x.at)}: ${esc(x.title)}</div><button class="btn ghost" data-reply="${x.n}">Check the reply</button><div id="rep${x.n}" class="small" style="white-space:pre-wrap;margin-top:6px"></div></div>`).join("")}</div>
+  <div class="sec row2"><a class="btn primary" style="text-align:center;text-decoration:none" href="${esc(j.url)}" target="_blank" rel="noopener">Open posting</a>${m ? `<button class="btn" id="dounmark">Move back to Leads</button>` : `<button class="btn" id="doapply">Applied</button><button class="btn danger" id="doskip">Skip</button>`}</div></div>`;
 }
 function kit() {
   const p = S.profile, rows = [["Name", p.name], ["Phone", p.phone], ["Email", p.email], ["LinkedIn", p.linkedin], ["Interactive CV", p.cvsite], ["Notice period", p.notice]].filter(r => r[1]);
@@ -262,59 +314,73 @@ function AddJob(shot) {
   <label>Posting text (optional)<textarea id="atext">${esc(S.shareText || "")}</textarea></label>
   <label>Note (optional)<input type="text" id="anote"></label>
   <div class="row2"><button class="btn primary" id="asend">${shot ? "Open GitHub form" : "Send to the engine"}</button></div>`;
-  document.body.appendChild(m);
-  $("#aback", m).onclick = () => m.remove();
+  document.body.appendChild(m); $("#aback", m).onclick = () => m.remove();
   $("#asend", m).onclick = async () => {
     const link = $("#alink", m).value.trim(), text = $("#atext", m).value.trim(), note = $("#anote", m).value.trim();
     if (!link && !text) return toast("Add a link or paste the text first");
     const body = `Link: ${link || "-"}\nNote: ${note || "-"}\n\nPosting text:\n${text || "-"}`;
     if (shot) { window.open(`https://github.com/${S.cfg.repo}/issues/new?labels=add-job&title=${encodeURIComponent("Add a job")}&body=${encodeURIComponent(body + "\n\nAttach screenshots below this line:\n")}`, "_blank"); return }
-    try { const i = await issue("Add a job: " + (link || text.slice(0, 50)), body, ["add-job"]); m.remove(); toast("Sent as issue #" + i.number + ". The engine reads it in the next build step.") } catch (e) { toast(e.message) }
+    try { const i = await issue("Add a job: " + (link || text.slice(0, 50)), body, ["add-job"]); S.sent.push({ n: i.number, kind: "Added job", title: link || text.slice(0, 50), at: today() }); ls.set("jp.sent", S.sent); m.remove(); render(); toast("Sent as issue #" + i.number) } catch (e) { toast(e.message) }
   };
 }
 
 /* ---------- render and events ---------- */
 function render() {
-  $("#title").textContent = TABS.find(t => t[0] === S.tab)[1];
+  $("#title").textContent = TABS.find(t => t[0] === S.tab)[1]; $("#upd").textContent = "Updated " + ago(S.generated);
+  $("#selmode").hidden = S.tab !== "leads"; $("#selmode").textContent = S.sel ? "Cancel" : "Select";
   $("#tabs").innerHTML = TABS.map(([k, l]) => `<button role="tab" aria-selected="${S.tab === k}" data-tab="${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>${l}</button>`).join("");
   const keep = $("#main").scrollTop;
   $("#main").innerHTML = { home: Home, leads: Leads, applied: Applied, profile: Profile }[S.tab]();
-  $("#main").scrollTop = keep;
-  document.getElementById("sheet")?.remove();
+  $("#main").scrollTop = keep; document.getElementById("sheet")?.remove();
   if (S.open) { const j = S.jobs.find(x => x.id === S.open); if (j) { document.body.insertAdjacentHTML("beforeend", Detail(j)); bindDetail(j) } }
   bindSwipe();
 }
 function bindDetail(j) {
   $("#back").onclick = () => { S.open = null; render() };
-  $("#doapply").onclick = () => applyFlow(j);
-  $("#doskip").onclick = () => skipFlow(j);
-  $("#asksend").onclick = async () => { const q = $("#ask").value.trim(); if (!q) return; try { const i = await issue("Question: " + j.title.slice(0, 60), `Job: ${j.url}\nJob id: ${j.id}\n\nQuestion: ${q}`, ["ask"]); toast("Question sent as issue #" + i.number) } catch (e) { toast(e.message) } };
-  $("#sheet").onclick = e => { const c = e.target.closest("[data-copy]"); if (c) copy(c.dataset.copy) };
+  $("#doapply") && ($("#doapply").onclick = () => quickApply(j));
+  $("#doskip") && ($("#doskip").onclick = () => quickSkip(j));
+  $("#dounmark") && ($("#dounmark").onclick = () => { unmark(j); S.open = null; render() });
+  $("#asksend").onclick = async () => { const q = $("#ask").value.trim(); if (!q) return; try { const i = await issue("Question: " + j.title.slice(0, 60), `Job: ${j.url}\nJob id: ${j.id}\n\nQuestion: ${q}`, ["ask"]); S.sent.push({ n: i.number, kind: "Question", title: q.slice(0, 80), at: today(), job: j.id }); ls.set("jp.sent", S.sent); toast("Question sent as issue #" + i.number); render() } catch (e) { toast(e.message) } };
+  $("#sheet").onclick = async e => {
+    const c = e.target.closest("[data-copy]"); if (c) copy(c.dataset.copy);
+    const r = e.target.closest("[data-reply]"); if (r) { try { const cs = await gh("/issues/" + r.dataset.reply + "/comments"); $("#rep" + r.dataset.reply).textContent = cs.length ? cs[cs.length - 1].body : "No reply yet. The engine answers after its next processing step." } catch (x) { toast(x.message) } }
+  };
 }
 function bindSwipe() {
   document.querySelectorAll(".swipe").forEach(sw => {
     const c = sw.querySelector(".card"), id = sw.dataset.id; let x0 = 0, y0 = 0, dx = 0, drag = false, moved = false;
-    c.addEventListener("pointerdown", e => { x0 = e.clientX; y0 = e.clientY; dx = 0; drag = true; moved = false; c.classList.add("dragging") });
+    c.addEventListener("pointerdown", e => { if (S.sel) return; x0 = e.clientX; y0 = e.clientY; dx = 0; drag = true; moved = false; c.classList.add("dragging") });
     c.addEventListener("pointermove", e => { if (!drag) return; dx = e.clientX - x0; if (Math.abs(dx) > 8 && Math.abs(e.clientY - y0) < 30) { moved = true; try { c.setPointerCapture(e.pointerId) } catch (x) {} c.style.transform = `translateX(${dx}px)` } });
     const end = () => { if (!drag) return; drag = false; c.classList.remove("dragging"); const j = S.jobs.find(x => x.id === id);
-      if (moved && dx > 110) { c.style.transform = "translateX(110%)"; setTimeout(() => { mark(j, "applied"); render(); toast("Marked applied", () => unmark(j)) }, 120) }
-      else if (moved && dx < -110) { c.style.transform = ""; skipFlow(j) } else c.style.transform = "" };
+      if (moved && dx > 110) { c.style.transform = "translateX(110%)"; setTimeout(() => quickApply(j), 120) }
+      else if (moved && dx < -110) { c.style.transform = "translateX(-110%)"; setTimeout(() => quickSkip(j), 120) } else c.style.transform = "" };
     c.addEventListener("pointerup", end); c.addEventListener("pointercancel", end);
-    c.addEventListener("click", e => { if (moved) { e.preventDefault(); moved = false; return } S.open = id; render() });
+    c.addEventListener("click", e => { if (e.target.closest("[data-legend]") && !S.sel) return; if (moved) { e.preventDefault(); moved = false; return }
+      if (S.sel) { S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); renderKeep(); return } S.open = id; render() });
   });
 }
+const renderKeep = () => { const k = $("#main").scrollTop; render(); $("#main").scrollTop = k };
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-tab]"); if (t) { S.tab = t.dataset.tab; S.open = null; render(); return }
-  const f = e.target.closest("[data-f]"); if (f) { S.f[f.dataset.f] = f.dataset.v; render(); return }
+  const lg = e.target.closest("[data-legend]"); if (lg && !S.sel) { e.stopPropagation(); legend(); return }
+  const t = e.target.closest("[data-tab]"); if (t) { S.tab = t.dataset.tab; S.open = null; S.sel = null; render(); return }
+  const f = e.target.closest("[data-f]"); if (f) { S.f[f.dataset.f] = f.dataset.v; ls.set("jp.f", S.f); render(); return }
   const u = e.target.closest("[data-undo]"); if (u) { unmark(S.jobs.find(j => j.id === u.dataset.undo)); return }
-  const o = e.target.closest("[data-open]"); if (o && !e.target.closest(".swipe") && !e.target.closest("[data-undo]")) { S.open = o.dataset.open; render(); return }
-  if (e.target.id === "addjob") AddJob(false);
-  if (e.target.id === "addshot") AddJob(true);
-  if (e.target.id === "refresh") load(true);
-  if (e.target.id === "savecfg") { S.cfg = { repo: $("#repo").value.trim() || REPO_DEFAULT, token: $("#token").value.trim() }; ls.set("jp.cfg", S.cfg); load(true); toast("Saved") }
-  if (e.target.id === "savep") { ["name", "phone", "email", "linkedin", "cvsite", "gmail", "notice"].forEach(k => S.profile[k] = $("#" + k).value.trim()); ls.set("jp.profile", S.profile); toast("Details saved") }
-  if (e.target.id === "sendprefs") { const v = [...document.querySelectorAll("[data-pref]")].map(i => i.value.trim()); S.profile.prefs = v; ls.set("jp.profile", S.profile); const names = ["Industries to watch", "Companies to watch", "Preferred position names", "Companies to avoid", "Jobs or roles to avoid"]; issue("Update preferences", names.map((n, i) => `${n}: ${v[i]}`).join("\n"), ["prefs"]).then(i => toast("Sent as issue #" + i.number)).catch(x => toast(x.message)) }
-  if (e.target.id === "syncev") syncEvents().then(() => { toast("Done"); render() });
+  const rs = e.target.closest("[data-reason]"); if (rs) { reasonSheet([rs.dataset.reason]); return }
+  const sg = e.target.closest("[data-stage]"); if (sg) { const [id, k] = sg.dataset.stage.split("|"); const cur = (S.marks[id].stages || {})[k];
+    const m = document.createElement("div"); m.className = "modal"; m.innerHTML = `<div class="inner"><h2 style="margin:0 0 8px;font-size:18px">${STAGES.find(s => s[0] === k)[1]}</h2><label>Date<input type="date" id="sd" value="${cur || today()}"></label><div class="row2"><button class="btn" id="sx">Clear</button><button class="btn primary" id="sok">Save</button></div></div>`;
+    document.body.appendChild(m); m.onclick = ev => { if (ev.target === m) m.remove() }; $("#sx", m).onclick = () => { m.remove(); setStage(id, k, "") }; $("#sok", m).onclick = () => { const d = $("#sd", m).value; m.remove(); setStage(id, k, d) }; return }
+  const o = e.target.closest("[data-open]"); if (o && !S.sel && !e.target.closest(".swipe") && !e.target.closest("button")) { S.open = o.dataset.open; render(); return }
+  const ac = e.target.closest("[data-acct]"); if (ac) { const a = S.profile.accts || [], n = ac.dataset.acct; S.profile.accts = a.includes(n) ? a.filter(x => x !== n) : [...a, n]; ls.set("jp.profile", S.profile); render(); return }
+  const id = e.target.id;
+  if (id === "addjob") AddJob(false); if (id === "addshot") AddJob(true); if (id === "refresh") load();
+  if (id === "selmode") { S.sel = S.sel ? null : new Set(); render() }
+  if (id === "bskip" && S.sel.size) { const ids = [...S.sel]; ids.forEach(i => mark(S.jobs.find(j => j.id === i), "skipped")); S.sel = null; render(); reasonSheet(ids) }
+  if (id === "bapply" && S.sel.size) { const n = S.sel.size; [...S.sel].forEach(i => mark(S.jobs.find(j => j.id === i), "applied")); S.sel = null; render(); toast(n + " marked applied") }
+  if (id === "savecfg") { S.cfg = { repo: $("#repo").value.trim() || REPO_DEFAULT, token: $("#token").value.trim() }; S.profile.tokenExp = $("#tokenExp").value; ls.set("jp.profile", S.profile); ls.set("jp.cfg", S.cfg); load(); toast("Saved") }
+  if (id === "restore") restore();
+  if (id === "savep") { ["name", "phone", "email", "linkedin", "cvsite", "gmail", "notice"].forEach(k => S.profile[k] = $("#" + k).value.trim()); ls.set("jp.profile", S.profile); toast("Details saved") }
+  if (id === "sendprefs") { const v = [...document.querySelectorAll("[data-pref]")].map(i => i.value.trim()); S.profile.prefs = v; ls.set("jp.profile", S.profile); const names = ["Industries to watch", "Companies to watch", "Preferred position names", "Companies to avoid", "Jobs or roles to avoid"]; issue("Update preferences", names.map((n, i) => `### ${n}\n\n${v[i] || "_No response_"}`).join("\n\n"), ["prefs"]).then(i => { S.sent.push({ n: i.number, kind: "Preferences", title: "Preference lists", at: today() }); ls.set("jp.sent", S.sent); toast("Sent as issue #" + i.number) }).catch(x => toast(x.message)) }
+  if (id === "syncev") syncEvents().then(() => { toast("Done"); render() });
 });
 document.addEventListener("input", e => { if (e.target.id === "q") { S.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos) } });
 const sp = new URLSearchParams(location.search);
