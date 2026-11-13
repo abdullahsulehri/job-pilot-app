@@ -52,7 +52,7 @@ label{display:flex;flex-direction:column;gap:5px;font-weight:600;font-size:13px;
 .card .meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;align-items:center}
 .card .meta span{white-space:nowrap}
 .m-remote{color:var(--t1)}.m-abroad{color:var(--warn);font-weight:600}.m-pay{font-weight:600}.m-route{color:var(--t2)}.m-need{color:var(--warn)}.m-cv{color:var(--ai)}.m-warn{color:var(--bad);font-weight:600}.m-muted{color:var(--muted)}
-.newdot{color:#fff;background:var(--accent);border-radius:6px;padding:0 5px;font-size:10px}.picked{border-color:var(--accent)}.card .tb{border:0;cursor:pointer}.stage{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.stage button{min-height:36px;font-size:13px;padding:6px 10px}.stage .done{background:var(--t1bg);color:var(--t1);border-color:var(--t1)}.bulk{position:sticky;bottom:0;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;gap:8px;margin-top:8px}.bulk .btn{flex:1}input[type=date]{width:auto;min-height:36px;padding:4px 8px}.sub{font-size:12px;color:var(--muted);margin-top:-2px}.banner{background:var(--badbg);border:1px solid #5a2b26;border-radius:12px;padding:10px 12px;margin:6px 0}.hint{color:var(--muted);font-size:12px;text-align:center;margin:2px 0 8px}
+.fbar{display:flex;gap:8px;align-items:center;padding:4px 0}.fbar input{flex:1;min-width:0}.fbar .btn{white-space:nowrap}.newdot{color:#fff;background:var(--accent);border-radius:6px;padding:0 5px;font-size:10px}.picked{border-color:var(--accent)}.card .tb{border:0;cursor:pointer}.stage{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.stage button{min-height:36px;font-size:13px;padding:6px 10px}.stage .done{background:var(--t1bg);color:var(--t1);border-color:var(--t1)}.bulk{position:sticky;bottom:0;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;gap:8px;margin-top:8px}.bulk .btn{flex:1}input[type=date]{width:auto;min-height:36px;padding:4px 8px}.sub{font-size:12px;color:var(--muted);margin-top:-2px}.banner{background:var(--badbg);border:1px solid #5a2b26;border-radius:12px;padding:10px 12px;margin:6px 0}.hint{color:var(--muted);font-size:12px;text-align:center;margin:2px 0 8px}
 .sheet{position:fixed;inset:0;background:var(--canvas);z-index:20;overflow-y:auto;padding:max(12px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
 .sheet .bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .sheet h2{font-size:20px;margin:6px 0 2px;overflow-wrap:anywhere}
@@ -89,7 +89,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v) } catch (e) { return d } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) {} } };
 const FDEF = { tier: "all", pay: "all", effort: "all", where: "all", sector: "all", fresh: "all", ind: "all" };
-const S = { jobs: [], generated: "", tab: "leads", q: "", f: { ...FDEF, ...ls.get("jp.f", {}) }, marks: ls.get("jp.marks", {}), events: ls.get("jp.events", []),
+const S = { jobs: [], generated: "", tab: "leads", q: "", f: { ...FDEF, ...ls.get("jp.f", {}) }, sort: ls.get("jp.sort", "best"), hint: ls.get("jp.hint", 1), marks: ls.get("jp.marks", {}), events: ls.get("jp.events", []),
   profile: ls.get("jp.profile", {}), sent: ls.get("jp.sent", []), sel: null, cfg: ls.get("jp.cfg", { repo: REPO_DEFAULT, token: "" }), open: null, loadErr: "" };
 const ICON = { home: '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>', leads: '<path d="M16 11a4 4 0 1 0-8 0M4 21a8 8 0 0 1 16 0"/>', applied: '<path d="M4 4h16v16H4zM8 12l3 3 5-6"/>', profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>' };
 const TABS = [["home", "Home"], ["leads", "Leads"], ["applied", "Applied"], ["profile", "Profile"]];
@@ -152,11 +152,15 @@ const whereOf = j => /Lahore/.test(j.bucket) ? "Lahore" : /remote|Remote/.test(j
 const focusInd = j => /account|financ|audit|tax|bank|insur/i.test((j.industry || "") + " " + j.company);
 const open_ = () => S.jobs.filter(j => j.tier !== "Skip" && !S.marks[j.id]);
 const PRED = { tier: (j, v) => j.tier === v, where: (j, v) => whereOf(j) === v, pay: (j, v) => !!j.pay, effort: (j, v) => j.effort === v, sector: (j, v) => !!j.sector, fresh: (j, v) => !!j.new, ind: (j, v) => focusInd(j) || j.watch };
-function visible() {
+const SORTS = { best: (a, b) => ORDER[a.tier] - ORDER[b.tier] || (BRANK[a.bucket] ?? 5) - (BRANK[b.bucket] ?? 5) || b.fit - a.fit, new: (a, b) => (a.age_days ?? 999) - (b.age_days ?? 999), due: (a, b) => (dueText(a) ? a.deadline : "9") < (dueText(b) ? b.deadline : "9") ? -1 : 1 };
+const SORT_NAMES = { best: "Best first", new: "Newest", due: "Closing soon" };
+function matches(j, skip) {
   const q = S.q.toLowerCase();
-  return open_().filter(j => Object.keys(S.f).every(k => S.f[k] === "all" || PRED[k](j, S.f[k])) && (!q || (j.title + " " + j.company + " " + j.location + " " + (j.industry || "")).toLowerCase().includes(q)))
-    .sort((a, b) => ORDER[a.tier] - ORDER[b.tier] || (BRANK[a.bucket] ?? 5) - (BRANK[b.bucket] ?? 5) || b.fit - a.fit);
+  return Object.keys(S.f).every(k => k === skip || S.f[k] === "all" || PRED[k](j, S.f[k])) && (!q || (j.title + " " + j.company + " " + j.location + " " + (j.industry || "")).toLowerCase().includes(q));
 }
+const visible = () => open_().filter(j => matches(j)).sort(SORTS[S.sort]);
+const activeCount = () => Object.keys(S.f).filter(k => S.f[k] !== "all").length;
+const cleanCo = c => { const l = c.split("|")[0].trim(); const latin = l.replace(/[\u0600-\u06ff]/g, "").trim(); return latin || l };
 function meta(j) {
   const abroad = !/pakistan/i.test(j.location || "") && !/^P1 Lahore/.test(j.bucket);
   const m = [], md = modeLabel(j);
@@ -188,8 +192,8 @@ function mark(j, v, reason) { S.marks[j.id] = { v, at: today(), reason: reason |
 function unmark(j) { delete S.marks[j.id]; ls.set("jp.marks", S.marks); logEvent({ job: j.id, action: "undo" }); render() }
 function setReason(ids, reason) { ids.forEach(id => { if (S.marks[id]) { S.marks[id].reason = reason; logEvent({ job: id, action: "reason", reason }) } }); ls.set("jp.marks", S.marks); render() }
 function setStage(id, stage, date) { const m = S.marks[id]; if (!m) return; m.stages = { ...(m.stages || {}) }; if (date) m.stages[stage] = date; else delete m.stages[stage]; ls.set("jp.marks", S.marks); logEvent({ job: id, action: "stage", stage, date: date || "" }); render() }
-function quickSkip(j) { mark(j, "skipped"); S.open = null; render(); toast("Skipped", ["Undo", () => unmark(j)], ["Add reason", () => reasonSheet([j.id])]) }
-function quickApply(j) { mark(j, "applied"); S.open = null; render(); toast("Marked applied", ["Undo", () => unmark(j)]) }
+function quickSkip(j) { S.hint = 0; ls.set("jp.hint", 0); mark(j, "skipped"); S.open = null; render(); toast("Skipped", ["Undo", () => unmark(j)], ["Add reason", () => reasonSheet([j.id])]) }
+function quickApply(j) { S.hint = 0; ls.set("jp.hint", 0); mark(j, "applied"); S.open = null; render(); toast("Marked applied", ["Undo", () => unmark(j)]) }
 function voice(input, btn) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return toast("Voice typing is not available here. Use the microphone on your keyboard.");
@@ -220,15 +224,27 @@ function legend() {
 function card(j) {
   const sel = S.sel, on = sel && sel.has(j.id);
   return `<div class="swipe" data-id="${j.id}"><div class="under"><span style="color:#fff">✓ Applied</span><span style="color:#fff">Skip ✕</span></div>
-  <div class="card ${on ? "picked" : ""}" data-open="${j.id}"><button class="tb tier ${tc(j.tier)}" data-legend="1" aria-label="${j.tier}">${sel ? (on ? "✓" : "○") : "T" + j.tier.slice(-1)}</button><div style="min-width:0"><div class="co">${j.watch ? "★ " : ""}${j.new ? '<b class="newdot">NEW</b> ' : ""}${esc(j.company)} · ${esc(placeOf(j))}${j.industry ? " · " + esc(j.industry) : ""}</div>
+  <div class="card ${on ? "picked" : ""}" data-open="${j.id}"><button class="tb tier ${tc(j.tier)}" data-legend="1" aria-label="${j.tier}">${sel ? (on ? "✓" : "○") : "T" + j.tier.slice(-1)}</button><div style="min-width:0"><div class="co">${j.watch ? "★ " : ""}${j.new ? '<b class="newdot">NEW</b> ' : ""}${esc(cleanCo(j.company))} · ${esc(placeOf(j))}${j.industry ? " · " + esc(j.industry) : ""}</div>
   <div class="ti">${esc(cleanTitle(j.title))}</div>${chipsFor(j)}</div></div></div>`;
 }
+const FGROUPS = [["tier", "Tier", [["Tier 1", "T1"], ["Tier 2", "T2"], ["Tier 3", "T3"]]], ["fresh", "Age", [["new", "New since last run"]]], ["where", "Where", [["Lahore", "Lahore"], ["Remote", "Remote"], ["Gulf", "Gulf"]]],
+  ["ind", "Industry", [["focus", "Finance & accounting"]]], ["pay", "Pay", [["stated", "Pay stated"]]], ["effort", "Effort to apply", [["low", "Low"], ["medium", "Medium"], ["high", "High"]]], ["sector", "Sector", [["Govt", "Govt"]]]];
+const optLabel = (k, v) => FGROUPS.find(g => g[0] === k)[2].find(o => o[0] === v)?.[1] || v;
 function filterBar() {
-  const base = open_(), cnt = (k, v) => base.filter(j => PRED[k](j, v)).length;
-  const opt = (k, vals) => vals.map(([v, l]) => `<button class="chip btn2 ${S.f[k] === v ? "sel" : ""}" data-f="${k}" data-v="${v}">${l}${v === "all" ? "" : " " + cnt(k, v)}</button>`).join("");
-  return `<input type="search" id="q" placeholder="Search roles, companies, industries" value="${esc(S.q)}" aria-label="Search">
-  <div class="filters">${opt("tier", [["all", "All tiers"], ["Tier 1", "T1"], ["Tier 2", "T2"], ["Tier 3", "T3"]])}${opt("fresh", [["all", "Any age"], ["new", "New"]])}</div>
-  <div class="filters">${opt("where", [["all", "Anywhere"], ["Lahore", "Lahore"], ["Remote", "Remote"], ["Gulf", "Gulf"]])}${opt("ind", [["all", "Any industry"], ["focus", "Finance & accounting"]])}${opt("pay", [["all", "Any pay"], ["stated", "Pay stated"]])}${opt("effort", [["all", "Any effort"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]])}${opt("sector", [["all", "All sectors"], ["Govt", "Govt"]])}</div>`;
+  const n = activeCount();
+  const chips = Object.keys(S.f).filter(k => S.f[k] !== "all").map(k => `<button class="chip btn2 sel" data-clear="${k}">${esc(optLabel(k, S.f[k]))} \u2715</button>`).join("");
+  return `<div class="fbar"><input type="search" id="q" placeholder="Search" value="${esc(S.q)}" aria-label="Search"><button class="btn ${n ? "primary" : ""}" id="openf">Filters${n ? " \u00b7 " + n : ""}</button></div>
+  <div class="filters" style="padding:6px 0 4px"><span class="muted small" style="align-self:center;white-space:nowrap">${visible().length} jobs \u00b7 ${SORT_NAMES[S.sort]}</span>${chips}</div>`;
+}
+function filterSheet() {
+  document.getElementById("fsheet")?.remove();
+  const m = document.createElement("div"); m.className = "modal"; m.id = "fsheet";
+  const cnt = (k, v) => open_().filter(j => matches(j, k) && PRED[k](j, v)).length;
+  m.innerHTML = `<div class="inner" style="max-height:85vh;overflow-y:auto"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0;font-size:18px">Filters</h2><button class="btn ghost" id="freset">Reset</button></div>
+  ${FGROUPS.map(([k, l, opts]) => `<div class="sec" style="margin-top:12px"><h3>${l}</h3><div class="chips">${opts.map(([v, lab]) => `<button class="chip btn2 ${S.f[k] === v ? "sel" : ""}" data-f="${k}" data-v="${v}">${lab} ${cnt(k, v)}</button>`).join("")}</div></div>`).join("")}
+  <div class="sec" style="margin-top:12px"><h3>Sort by</h3><div class="chips">${Object.entries(SORT_NAMES).map(([v, l]) => `<button class="chip btn2 ${S.sort === v ? "sel" : ""}" data-sort="${v}">${l}</button>`).join("")}</div></div>
+  <button class="btn primary" id="fdone" style="width:100%;margin-top:14px">Show ${visible().length} jobs</button></div>`;
+  document.body.appendChild(m);
 }
 function Leads() {
   const v = visible();
@@ -286,7 +302,7 @@ function Detail(j) {
   const facts = [["Industry", j.industry], ["Company size", j.size], ["Contract", { FT: "Full-time", PT: "Part-time" }[j.contract] || j.contract], ["Working days", j.working_days], ["Posted", j.posted ? j.posted + (ageText(j) ? " (" + ageText(j) + ")" : "") : ""], ["Pay as stated", j.pay_original], ["Benefits", (j.benefits || []).join(", ")]].filter(r => r[1]);
   const asked = S.sent.filter(x => x.job === j.id);
   return `<div class="sheet" id="sheet"><div class="bar"><button class="btn ghost" id="back">← Back</button><span style="flex:1"></span><button class="tier ${tc(j.tier)}" data-legend="1" style="border:0">${j.tier}</button></div>
-  <h2>${j.watch ? "★ " : ""}${esc(cleanTitle(j.title))}</h2><div class="muted">${esc(j.company)} · ${esc(placeOf(j))}</div><div style="margin-top:10px">${chipsFor(j)}</div>
+  <h2>${j.watch ? "★ " : ""}${esc(cleanTitle(j.title))}</h2><div class="muted">${esc(cleanCo(j.company))} · ${esc(placeOf(j))}</div><div style="margin-top:10px">${chipsFor(j)}</div>
   ${needAcct ? `<div class="banner" style="margin-top:10px">This route needs a ${acct} account. Set it up first, then tick ${acct} under Accounts in Profile.</div>` : ""}
   <div class="sec"><h3>The job in short</h3><div class="box">${esc(j.brief)}</div></div>
   ${facts.length ? `<div class="sec"><h3>Job facts</h3><div class="box">${facts.map(r => `<div class="kv"><span class="muted">${r[0]}</span><span style="text-align:right">${esc(r[1])}</span></div>`).join("")}</div></div>` : ""}
@@ -361,9 +377,12 @@ function bindSwipe() {
 }
 const renderKeep = () => { const k = $("#main").scrollTop; render(); $("#main").scrollTop = k };
 document.addEventListener("click", e => {
+  if (e.target.id === "fsheet") { e.target.remove(); return }
   const lg = e.target.closest("[data-legend]"); if (lg && !S.sel) { e.stopPropagation(); legend(); return }
   const t = e.target.closest("[data-tab]"); if (t) { S.tab = t.dataset.tab; S.open = null; S.sel = null; render(); return }
-  const f = e.target.closest("[data-f]"); if (f) { S.f[f.dataset.f] = f.dataset.v; ls.set("jp.f", S.f); render(); return }
+  const f = e.target.closest("[data-f]"); if (f) { S.f[f.dataset.f] = S.f[f.dataset.f] === f.dataset.v ? "all" : f.dataset.v; ls.set("jp.f", S.f); render(); filterSheet(); return }
+  const so = e.target.closest("[data-sort]"); if (so) { S.sort = so.dataset.sort; ls.set("jp.sort", S.sort); render(); filterSheet(); return }
+  const cl = e.target.closest("[data-clear]"); if (cl) { S.f[cl.dataset.clear] = "all"; ls.set("jp.f", S.f); render(); return }
   const u = e.target.closest("[data-undo]"); if (u) { unmark(S.jobs.find(j => j.id === u.dataset.undo)); return }
   const rs = e.target.closest("[data-reason]"); if (rs) { reasonSheet([rs.dataset.reason]); return }
   const sg = e.target.closest("[data-stage]"); if (sg) { const [id, k] = sg.dataset.stage.split("|"); const cur = (S.marks[id].stages || {})[k];
@@ -372,6 +391,9 @@ document.addEventListener("click", e => {
   const o = e.target.closest("[data-open]"); if (o && !S.sel && !e.target.closest(".swipe") && !e.target.closest("button")) { S.open = o.dataset.open; render(); return }
   const ac = e.target.closest("[data-acct]"); if (ac) { const a = S.profile.accts || [], n = ac.dataset.acct; S.profile.accts = a.includes(n) ? a.filter(x => x !== n) : [...a, n]; ls.set("jp.profile", S.profile); render(); return }
   const id = e.target.id;
+  if (id === "openf") filterSheet();
+  if (id === "fdone") document.getElementById("fsheet")?.remove();
+  if (id === "freset") { S.f = { ...FDEF }; ls.set("jp.f", S.f); render(); filterSheet() }
   if (id === "addjob") AddJob(false); if (id === "addshot") AddJob(true); if (id === "refresh") load();
   if (id === "selmode") { S.sel = S.sel ? null : new Set(); render() }
   if (id === "bskip" && S.sel.size) { const ids = [...S.sel]; ids.forEach(i => mark(S.jobs.find(j => j.id === i), "skipped")); S.sel = null; render(); reasonSheet(ids) }
