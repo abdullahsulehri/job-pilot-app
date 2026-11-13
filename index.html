@@ -152,8 +152,8 @@ const whereOf = j => /Lahore/.test(j.bucket) ? "Lahore" : /remote|Remote/.test(j
 const focusInd = j => /account|financ|audit|tax|bank|insur/i.test((j.industry || "") + " " + j.company);
 const open_ = () => S.jobs.filter(j => j.tier !== "Skip" && !S.marks[j.id]);
 const PRED = { tier: (j, v) => j.tier === v, where: (j, v) => whereOf(j) === v, pay: (j, v) => !!j.pay, effort: (j, v) => j.effort === v, sector: (j, v) => !!j.sector, fresh: (j, v) => !!j.new, ind: (j, v) => focusInd(j) || j.watch };
-const SORTS = { best: (a, b) => ORDER[a.tier] - ORDER[b.tier] || (BRANK[a.bucket] ?? 5) - (BRANK[b.bucket] ?? 5) || b.fit - a.fit, new: (a, b) => (a.age_days ?? 999) - (b.age_days ?? 999), due: (a, b) => (dueText(a) ? a.deadline : "9") < (dueText(b) ? b.deadline : "9") ? -1 : 1 };
-const SORT_NAMES = { best: "Best first", new: "Newest", due: "Closing soon" };
+const SORTS = { best: (a, b) => ORDER[a.tier] - ORDER[b.tier] || (BRANK[a.bucket] ?? 5) - (BRANK[b.bucket] ?? 5) || b.fit - a.fit, new: (a, b) => (a.age_days ?? 999) - (b.age_days ?? 999), pay: (a, b) => (b.pay_mid || 0) - (a.pay_mid || 0), due: (a, b) => (dueText(a) ? a.deadline : "9") < (dueText(b) ? b.deadline : "9") ? -1 : 1 };
+const SORT_NAMES = { best: "Best first", new: "Newest", pay: "Highest pay", due: "Closing soon" };
 function matches(j, skip) {
   const q = S.q.toLowerCase();
   return Object.keys(S.f).every(k => k === skip || S.f[k] === "all" || PRED[k](j, S.f[k])) && (!q || (j.title + " " + j.company + " " + j.location + " " + (j.industry || "")).toLowerCase().includes(q));
@@ -165,7 +165,7 @@ function meta(j) {
   const abroad = !/pakistan/i.test(j.location || "") && !/^P1 Lahore/.test(j.bucket);
   const m = [], md = modeLabel(j);
   m.push(`<span class="${md.startsWith("Remote") ? "m-remote" : j.mode === "onsite" && abroad ? "m-abroad" : "m-muted"}">${md}</span>`);
-  m.push(j.pay ? `<span class="m-pay">${esc(j.pay)}</span>` : `<span class="m-muted">Pay ?</span>`);
+  if (j.pay) m.push(`<span class="m-pay ${j.pay_band === "excellent" || j.pay_band === "good" ? "m-remote" : ""}">${esc(j.pay)}${j.pay_min_only ? "+" : ""}</span>`);
   m.push(`<span class="m-route">${esc(ROUTE[j.route] || j.route)}</span>`);
   const need = (j.extras || []).filter(x => x !== "References").map(x => x === "Loom video" ? "▶ video" : x === "Cover letter" ? "✎ letter" : x.toLowerCase());
   if (need.length) m.push(`<span class="m-need">${need.join(" ")}</span>`);
@@ -299,12 +299,18 @@ function Detail(j) {
       j.route === "Apply with Indeed" ? ["Open the posting and tap Apply with Indeed.", "Check the CV Indeed will send, then answer its questions.", "Come back and tap Applied."] :
         j.route.startsWith("LinkedIn") ? ["Open the posting. If it shows Easy Apply, use it and upload the CV.", "If it sends you to the company site, use the details below.", "Come back and tap Applied."] : ["Open the application page.", "Copy your details and answers below into the form.", "Upload the CV, submit, then tap Applied."];
   const visaNote = j.mode === "onsite" && !/pakistan/i.test(j.location || "") && j.visa !== "sponsored" ? "Visa is not stated: ask about it in your first message." : "";
-  const facts = [["Industry", j.industry], ["Company size", j.size], ["Contract", { FT: "Full-time", PT: "Part-time" }[j.contract] || j.contract], ["Working days", j.working_days], ["Posted", j.posted ? j.posted + (ageText(j) ? " (" + ageText(j) + ")" : "") : ""], ["Pay as stated", j.pay_original], ["Benefits", (j.benefits || []).join(", ")]].filter(r => r[1]);
+  const facts = [["Industry", j.industry], ["Company size", j.size], ["Contract", { FT: "Full-time", PT: "Part-time" }[j.contract] || j.contract], ["Working days", j.working_days], ["Posted", j.posted ? j.posted + (ageText(j) ? " (" + ageText(j) + ")" : "") : ""], ["Benefits", (j.benefits || []).join(", ")]].filter(r => r[1]);
   const asked = S.sent.filter(x => x.job === j.id);
+  const peers = S.jobs.filter(x => x.pay_mid && x.id !== j.id && whereOf(x) === whereOf(j)).map(x => x.pay_mid).sort((a, b) => a - b);
+  const typical = peers.length >= 4 ? peers[Math.floor(peers.length / 2)] : 0;
+  const fmtK = n => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : Math.round(n / 1000) + "k";
+  const payBox = j.pay ? `<b>${esc(j.pay)}${j.pay_min_only ? "+ (stated as a minimum)" : ""}</b> a month in PKR${j.pay_original && j.pay_original !== j.pay ? `<div class="muted small">As stated: ${esc(j.pay_original)}</div>` : ""}${j.pay_band && j.pay_band !== "unknown" ? `<div class="small" style="margin-top:4px">${j.pay_band === "excellent" || j.pay_band === "good" ? "At or above your minimum." : "Below your minimum."}</div>` : ""}`
+    : `Not stated. Ask about pay in your first message.${typical ? `<div class="muted small" style="margin-top:4px">Similar postings that state pay average about \u2248${fmtK(typical)} a month (${peers.length} postings). A rough guide only.</div>` : ""}`;
   return `<div class="sheet" id="sheet"><div class="bar"><button class="btn ghost" id="back">← Back</button><span style="flex:1"></span><button class="tier ${tc(j.tier)}" data-legend="1" style="border:0">${j.tier}</button></div>
   <h2>${j.watch ? "★ " : ""}${esc(cleanTitle(j.title))}</h2><div class="muted">${esc(cleanCo(j.company))} · ${esc(placeOf(j))}</div><div style="margin-top:10px">${chipsFor(j)}</div>
   ${needAcct ? `<div class="banner" style="margin-top:10px">This route needs a ${acct} account. Set it up first, then tick ${acct} under Accounts in Profile.</div>` : ""}
   <div class="sec"><h3>The job in short</h3><div class="box">${esc(j.brief)}</div></div>
+  <div class="sec"><h3>Pay</h3><div class="box">${payBox}</div></div>
   ${facts.length ? `<div class="sec"><h3>Job facts</h3><div class="box">${facts.map(r => `<div class="kv"><span class="muted">${r[0]}</span><span style="text-align:right">${esc(r[1])}</span></div>`).join("")}</div></div>` : ""}
   <div class="sec"><h3>Why it fits</h3><div class="box"><ul class="l">${j.why.filter(w => w.r).map(w => `<li><b>${esc(w.k)}:</b> ${esc(w.r)}</li>`).join("")}</ul></div></div>
   ${j.gaps.length ? `<div class="sec"><h3>What is missing</h3><div class="box"><ul class="l">${j.gaps.map(g => `<li>${esc(g)}</li>`).join("")}</ul></div></div>` : ""}
