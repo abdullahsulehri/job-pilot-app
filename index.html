@@ -140,10 +140,41 @@ async function restore() {
   } catch (e) { toast(e.message) }
 }
 
+/* ---------- notifications ---------- */
+const b64u = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(s.length / 4) * 4, "=")), c => c.charCodeAt(0));
+async function ensureVapid() {
+  let v = ls.get("jp.vapid", null); if (v) return v;
+  const kp = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const pub = await crypto.subtle.exportKey("raw", kp.publicKey), jwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+  v = { pub: b64u(pub), priv: jwk.d }; ls.set("jp.vapid", v); return v;
+}
+async function enablePush() {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return toast("This browser cannot receive notifications");
+    if (!S.cfg.token) return toast("Save your GitHub token first");
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") return toast("Notifications are blocked. Allow them for this app in the phone settings.");
+    const v = await ensureVapid(), reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (sub) { const k = sub.options && sub.options.applicationServerKey; if (!k || b64u(k) !== v.pub) { await sub.unsubscribe(); sub = null } }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: unb64u(v.pub) });
+    let n = ls.get("jp.pushIssue", null);
+    if (!n) { const l = await gh("/issues?labels=push-sub&state=all&per_page=1"); n = l.length ? l[0].number : (await issue("Push subscriptions (do not close)", "Browser push subscriptions for the owner's devices.", ["push-sub"])).number; ls.set("jp.pushIssue", n) }
+    let device = ls.get("jp.device", null); if (!device) { device = Math.random().toString(36).slice(2, 10); ls.set("jp.device", device) }
+    await gh("/issues/" + n + "/comments", { method: "POST", body: JSON.stringify({ body: "```json\n" + JSON.stringify({ device, sub: sub.toJSON(), ts: new Date().toISOString() }) + "\n```" }) });
+    S.profile.push = true; ls.set("jp.profile", S.profile); render(); toast("Notifications enabled. Now add the key shown in Profile.");
+  } catch (e) { toast("Could not enable notifications: " + e.message) }
+}
+async function showKey() {
+  const v = await ensureVapid();
+  try { await navigator.clipboard.writeText(v.priv); toast("Key copied. Paste it into GitHub as the secret VAPID_PRIVATE_KEY.") } catch (e) { const m = document.createElement("div"); m.className = "modal"; m.innerHTML = `<div class="inner"><p>Select and copy this key, then paste it into GitHub as the secret VAPID_PRIVATE_KEY.</p><div class="box"><code style="overflow-wrap:anywhere">${esc(v.priv)}</code></div><button class="btn" id="kc">Close</button></div>`; document.body.appendChild(m); m.onclick = ev => { if (ev.target === m || ev.target.id === "kc") m.remove() } }
+}
+
 /* ---------- helpers ---------- */
 const cleanTitle = t => t.replace(/\s*[(\[][^)\]]*(onsite|on-site|remote|hybrid|salary|pkr|aed|sar|lahore|karachi|dubai|riyadh|full[- ]time|part[- ]time)[^)\]]*[)\]]/ig, "").replace(/\s{2,}/g, " ").trim() || t;
 const modeLabel = j => ({ onsite: "Onsite", hybrid: "Hybrid", remote_open: "Remote", remote_restricted: "Remote*", unclear: "Place?" }[j.mode] || "Place?");
-const ROUTE = { "Email": "✉ Email", "Easy Apply": "⚡ Easy Apply", "LinkedIn (Easy Apply?)": "⚡ Easy Apply?", "Apply with Indeed": "Indeed", "Company site": "Company site", "Company form": "Company site", "Govt portal": "Govt portal" };
+const ROUTE = { "Email": "✉ Email", "Easy Apply": "⚡ Easy Apply", "LinkedIn (Easy Apply?)": "LinkedIn", "Apply with Indeed": "Indeed", "Company site": "Company site", "Company form": "Company site", "Govt portal": "Govt portal" };
 const placeOf = j => j.place || (j.location || "").split(",")[0];
 const ageText = j => { const d = j.age_days; if (d == null) return ""; return d <= 0 ? "today" : d < 14 ? d + "d" : Math.round(d / 7) + "w" };
 const dueText = j => { if (!j.deadline || j.deadline === "Not stated") return ""; const d = new Date(j.deadline); return isNaN(d) ? "" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) };
@@ -188,7 +219,7 @@ async function copy(text, label) { try { await navigator.clipboard.writeText(tex
 function ago(iso) { if (!iso) return "never"; const h = (Date.now() - new Date(iso)) / 36e5; return h < 1 ? "just now" : h < 24 ? Math.round(h) + "h ago" : Math.round(h / 24) + "d ago" }
 
 /* ---------- decisions ---------- */
-function mark(j, v, reason) { S.marks[j.id] = { v, at: today(), reason: reason || "", stages: v === "applied" ? { applied: today() } : {} }; ls.set("jp.marks", S.marks); logEvent({ job: j.id, title: j.title, company: j.company, tier: j.tier, action: v, reason: reason || "" }) }
+function mark(j, v, reason) { S.marks[j.id] = { v, at: today(), reason: reason || "", stages: v === "applied" ? { applied: today() } : {}, snap: { id: j.id, title: j.title, company: j.company, place: j.place, location: j.location, url: j.url, tier: j.tier } }; ls.set("jp.marks", S.marks); logEvent({ job: j.id, title: j.title, company: j.company, tier: j.tier, action: v, reason: reason || "" }) }
 function unmark(j) { delete S.marks[j.id]; ls.set("jp.marks", S.marks); logEvent({ job: j.id, action: "undo" }); render() }
 function setReason(ids, reason) { ids.forEach(id => { if (S.marks[id]) { S.marks[id].reason = reason; logEvent({ job: id, action: "reason", reason }) } }); ls.set("jp.marks", S.marks); render() }
 function setStage(id, stage, date) { const m = S.marks[id]; if (!m) return; m.stages = { ...(m.stages || {}) }; if (date) m.stages[stage] = date; else delete m.stages[stage]; ls.set("jp.marks", S.marks); logEvent({ job: id, action: "stage", stage, date: date || "" }); render() }
@@ -267,7 +298,7 @@ function Home() {
   ${S.sent.length ? `<div class="sec"><h3>Sent to the engine</h3>${S.sent.slice(-5).reverse().map(x => `<div class="box"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(x.kind)}</b><span class="muted small">${esc(x.at)}</span></div><div class="muted small">${esc(x.title)}</div><a href="https://github.com/${esc(S.cfg.repo)}/issues/${x.n}" target="_blank" rel="noopener">See the reply (issue #${x.n})</a></div>`).join("")}</div>` : ""}`;
 }
 function Applied() {
-  const by = v => S.jobs.filter(j => S.marks[j.id]?.v === v);
+  const by = v => Object.entries(S.marks).filter(([id, m]) => m.v === v).map(([id, m]) => S.jobs.find(j => j.id === id) || (m.snap && { ...m.snap, id })).filter(Boolean);
   const stageNow = m => { const done = STAGES.filter(([k]) => (m.stages || {})[k]); return done.length ? done[done.length - 1][1] : "Applied" };
   const row = j => { const m = S.marks[j.id]; return `<div class="box"><div style="display:flex;justify-content:space-between;gap:8px" data-open="${j.id}"><b>${esc(cleanTitle(j.title))}</b><span class="muted small">${m.at}</span></div><div class="muted">${esc(j.company)}</div>
     ${m.v === "applied" ? `<div class="small" style="margin-top:6px"><b>${stageNow(m)}</b></div><div class="stage">${STAGES.slice(1).map(([k, l]) => `<button class="btn ${(m.stages || {})[k] ? "done" : ""}" data-stage="${j.id}|${k}">${l}${(m.stages || {})[k] ? ": " + (m.stages[k]).slice(5) : ""}</button>`).join("")}</div>` : `<div class="small" style="margin-top:4px">${m.reason ? "Reason: " + esc(m.reason) : "No reason added"}</div><button class="btn ghost small" data-reason="${j.id}">${m.reason ? "Edit reason" : "Add reason"}</button>`}
@@ -285,6 +316,9 @@ function Profile() {
   <div class="sec"><h3>Your details (kept on this phone)</h3>${f("name", "Full name")}${f("phone", "Phone")}${f("email", "Email")}${f("linkedin", "LinkedIn")}${f("cvsite", "Interactive CV link", "text", "https://abdullahsulehri.github.io/interactive-cv/")}${f("gmail", "Gmail account used to apply")}${f("notice", "Notice period", "text", "30 days, negotiable")}
   <button class="btn" id="savep">Save details</button></div>
   <div class="sec"><h3>Accounts you need</h3><div class="chips">${["Indeed", "LinkedIn", "Bayt"].map(a => `<button class="chip btn2 ${(p.accts || []).includes(a) ? "sel" : ""}" data-acct="${a}">${a}${(p.accts || []).includes(a) ? " ready" : ""}</button>`).join("")}</div></div>
+  <div class="sec"><h3>Notifications</h3><p class="muted small">New jobs, new Tier 1 jobs and deadlines, sent to this phone after each daily run.${S.profile.push ? " Enabled on this phone." : ""}</p>
+  <div class="row2"><button class="btn primary" id="enpush">Enable notifications</button><button class="btn" id="showkey">Copy the key</button><button class="btn" id="pushtest">Send a test</button></div>
+  <p class="muted small">One-time setup: tap Enable, tap Copy the key, then in GitHub open the engine repo, Settings, Secrets and variables, Actions, New repository secret. Name it VAPID_PRIVATE_KEY and paste the key as its value. Then tap Send a test.</p></div>
   <div class="sec"><h3>Preferences</h3><p class="muted small">Separate items with semicolons. Sent as an issue; the engine applies them on its next run.</p>
   ${["Industries to watch", "Companies to watch", "Preferred position names", "Companies to avoid", "Jobs or roles to avoid"].map((l, i) => `<label>${l}<input type="text" data-pref="${i}" value="${esc((p.prefs || [])[i] || (i === 0 ? "accounting; finance" : ""))}"></label>`).join("")}
   <button class="btn" id="sendprefs">Send preferences</button></div>
@@ -406,6 +440,9 @@ document.addEventListener("click", e => {
   if (id === "bapply" && S.sel.size) { const n = S.sel.size; [...S.sel].forEach(i => mark(S.jobs.find(j => j.id === i), "applied")); S.sel = null; render(); toast(n + " marked applied") }
   if (id === "savecfg") { S.cfg = { repo: $("#repo").value.trim() || REPO_DEFAULT, token: $("#token").value.trim() }; S.profile.tokenExp = $("#tokenExp").value; ls.set("jp.profile", S.profile); ls.set("jp.cfg", S.cfg); load(); toast("Saved") }
   if (id === "restore") restore();
+  if (id === "enpush") enablePush();
+  if (id === "showkey") showKey();
+  if (id === "pushtest") issue("Test notification", "Please send a test notification.", ["push-test"]).then(i => toast("Test requested (issue #" + i.number + "). It arrives in about a minute.")).catch(x => toast(x.message));
   if (id === "savep") { ["name", "phone", "email", "linkedin", "cvsite", "gmail", "notice"].forEach(k => S.profile[k] = $("#" + k).value.trim()); ls.set("jp.profile", S.profile); toast("Details saved") }
   if (id === "sendprefs") { const v = [...document.querySelectorAll("[data-pref]")].map(i => i.value.trim()); S.profile.prefs = v; ls.set("jp.profile", S.profile); const names = ["Industries to watch", "Companies to watch", "Preferred position names", "Companies to avoid", "Jobs or roles to avoid"]; issue("Update preferences", names.map((n, i) => `### ${n}\n\n${v[i] || "_No response_"}`).join("\n\n"), ["prefs"]).then(i => { S.sent.push({ n: i.number, kind: "Preferences", title: "Preference lists", at: today() }); ls.set("jp.sent", S.sent); toast("Sent as issue #" + i.number) }).catch(x => toast(x.message)) }
   if (id === "syncev") syncEvents().then(() => { toast("Done"); render() });
